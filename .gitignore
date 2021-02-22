@@ -1,0 +1,9 @@
+/build
+/dist
+/stubgenj.egg-info
+__pycache__
+*.pyc
+*.jar
+/stubgenj/_version.py
+*-stubs
+*.swp

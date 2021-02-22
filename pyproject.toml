@@ -1,0 +1,10 @@
+[build-system]
+requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=3.4"]
+
+
+# Enable automatic versioning from git.
+[tool.setuptools_scm]
+write_to = "stubgenj/_version.py"
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules"

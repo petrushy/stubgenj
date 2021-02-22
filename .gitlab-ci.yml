@@ -1,0 +1,40 @@
+include:
+  - project: 'acc-co/devops/python/acc-py-devtools'
+    file: 'acc_py_devtools/templates/gitlab-ci/python.yml'
+
+variables:
+  project_name: stubgenj
+  PY_VERSION: "3.7"
+
+
+.dev_test_base:
+  extends:
+    - .acc_py_dev_test
+  image: continuumio/miniconda3
+  before_script:
+    - conda create -n dev_env --yes --quiet -c conda-forge python=${PY_VERSION} pip
+    - source activate dev_env
+
+    - conda install -c conda-forge --yes --quiet Jpype1${JPYPE_VN} openjdk
+
+    - pip install -e .[test]
+    - pip install pytest-cov
+
+dev_tests_jpype_1p2:
+  extends:
+    - .dev_test_base
+  variables:
+    JPYPE_VN: "==1.2.*"
+
+# A push of the source distribution to the acc-py PyPI, only on git tag.
+release_sdist:
+  extends: .acc_py_release_sdist
+
+
+build_wheel:
+  extends:
+    - .acc_py_build_wheel
+
+
+release_wheel:
+  extends: .acc_py_release_wheel
