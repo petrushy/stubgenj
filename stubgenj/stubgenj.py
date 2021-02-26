@@ -301,6 +301,33 @@ def convertStrings() -> bool:
     return isinstance(String().trim(), str)
 
 
+def mangleCallableTypeArgs(jClass: Any, typeArgs: Optional[List[TypeStr]]) -> Optional[List[TypeStr]]:
+    """
+    Mangle the type args from a Java functional interface so it matches what typing.Callable expects.
+
+    E.g. for Function: <Param1, Param2, ..., Return> (Java) -> [[Param1, Param2,...], Return]
+    """
+    if typeArgs is None:
+        return None
+    jClassName = jClass.class_.getName()
+    # we should use reflection here ...
+    if 'Function' in jClassName:
+        return [TypeStr('', typeArgs[0:-1]), typeArgs[-1]]
+    elif 'Consumer' in jClassName:
+        return [TypeStr('', typeArgs), TypeStr('None')]
+    elif 'Supplier' in jClassName:
+        return [TypeStr('', []), typeArgs[0]]
+    elif 'UnaryOperator' in jClassName:
+        return [TypeStr('', [typeArgs[0]]), typeArgs[0]]
+    elif 'Comparator' in jClassName:
+        return [TypeStr('', [typeArgs[0], typeArgs[0]]), TypeStr('int')]
+    elif 'Predicate' in jClassName:
+        return [TypeStr('', [typeArgs[0]]), TypeStr('bool')]
+    else:
+        return [TypeStr('', typeArgs), TypeStr('None')]
+
+
+
 def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] = None) -> TypeStr:
     """
     Construct a TypeStr to be used as a METHOD ARGUMENT, taking into account implicit conversions by JPype.
@@ -323,7 +350,8 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
         return TypeStr(typeName)
 
     try:
-        classHints = jpype.JClass(typeName)._hints  # noqa: JPype does not expose the class hints, but we need them ...
+        jClass = jpype.JClass(typeName)
+        classHints = jClass._hints  # noqa: JPype does not expose the class hints, but we need them ...
     except TypeError:
         # In case JClass can not be constructed, we assume JPype won't do any implicit conversion.
         # Usually this should not happen since the class has been loaded before; except for some edge cases with
@@ -345,8 +373,7 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
 
         if typeName == 'typing.Callable' and typeArgs is not None:
             # callable is a special case that needs mangling of type arguments
-            # <Param1, Param2, ..., Return> (Java) -> [[Param1, Param2,...], Return]
-            union.append(TypeStr(typeName, [TypeStr('', typeArgs[0:-1]), typeArgs[-1]]))
+            union.append(TypeStr(typeName, mangleCallableTypeArgs(jClass, typeArgs)))
         else:
             union.append(TypeStr(typeName, typeArgs or []))
     if len(union) > 1:

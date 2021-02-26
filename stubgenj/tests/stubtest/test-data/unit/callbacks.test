@@ -1,0 +1,37 @@
+[case testBiFunctionCallback]
+def valid_for_each_cb(k: str, v: float) -> None:
+    pass
+
+def invalid_for_each_cb_1(k: str, v: str) -> None:
+    pass
+
+def invalid_for_each_cb_2(k: str) -> None:
+    pass
+
+from java.util import HashMap
+pydict = {'hello': 1.0, 'world': 42.0}
+java_map = HashMap(pydict)
+
+java_map.forEach(valid_for_each_cb)
+java_map.forEach(invalid_for_each_cb_1) # E: Argument 1 to "forEach" of "HashMap" has incompatible type "Callable[[str, str], None]"; expected "Union[BiConsumer[str, float], Callable[[str, float], None]]"
+java_map.forEach(invalid_for_each_cb_2) # E: Argument 1 to "forEach" of "HashMap" has incompatible type "Callable[[str], None]"; expected "Union[BiConsumer[str, float], Callable[[str, float], None]]"
+
+
+[case testPredicateCallback]
+def valid_predicate(k: str) -> bool:
+    pass
+def invalid_predicate_1() -> bool:
+    pass
+def invalid_predicate_2(k: int) -> bool:
+    pass
+def invalid_predicate_3(k: str) -> int:
+    pass
+
+from java.util import ArrayList
+pylist = ['test', '1', '2']
+java_list = ArrayList(pylist)
+
+java_list.removeIf(valid_predicate)
+java_list.removeIf(invalid_predicate_1) # E: Argument 1 to "removeIf" of "ArrayList" has incompatible type "Callable[[], bool]"; expected "Union[Predicate[str], Callable[[str], bool]]"
+java_list.removeIf(invalid_predicate_2) # E: Argument 1 to "removeIf" of "ArrayList" has incompatible type "Callable[[int], bool]"; expected "Union[Predicate[str], Callable[[str], bool]]"
+java_list.removeIf(invalid_predicate_3) # E: Argument 1 to "removeIf" of "ArrayList" has incompatible type "Callable[[str], int]"; expected "Union[Predicate[str], Callable[[str], bool]]"

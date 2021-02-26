@@ -41,7 +41,7 @@ def setup_mypy_stubs(tmpdir: str):
 
 
 class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
-    files = ['arraylist.test']
+    files = ['arraylist.test', 'hashmap.test', 'callbacks.test']
     setup_done = False
 
     def setup(self):
