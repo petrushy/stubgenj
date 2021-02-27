@@ -34,7 +34,7 @@ setup(
     long_description=LONG_DESCRIPTION,
     long_description_content_type='text/markdown',
     license='MIT',
-    url='https://gitlab.cern.ch/scripting-tools/stubgenjr',
+    url='https://gitlab.cern.ch/scripting-tools/stubgenj',
     packages=find_packages(),
     python_requires='~=3.6',
     classifiers=[
