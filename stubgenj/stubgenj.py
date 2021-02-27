@@ -301,31 +301,91 @@ def convertStrings() -> bool:
     return isinstance(String().trim(), str)
 
 
+def isMethodPresentInJavaLangObject(jMethod: Any) -> bool:
+    """
+    Checks is a particular method signature is present on java.lang.Object.
+    This is used to find the method to call on java FunctionalInterfaces, as according to the JLS [1], these methods
+    are excluded from the "1 abstract method" rule of functional interfaces.
+
+    [1] https://docs.oracle.com/javase/specs/jls/se8/html/jls-9.html#jls-9.8
+    """
+    from java.lang import Object  # noqa
+    try:
+        Object.class_.getDeclaredMethod(jMethod.getName(), jMethod.getParameterTypes())
+        return True
+    except jpype.JException:  # java NoSuchMethodException
+        return False
+
+
+def invokedMethodOnFunctionalInterface(jClass: Any) -> Any:
+    """ Get the actual java method to be invoked on a Java FunctionalInterface """
+    for jMethod in jClass.getDeclaredMethods():
+        if isPublic(jMethod) \
+                and isAbstract(jMethod) \
+                and not isStatic(jMethod) \
+                and not jMethod.isSynthetic() \
+                and not isMethodPresentInJavaLangObject(jMethod):
+            return jMethod
+
+
+def resolveFunctionalInterfaceMethodType(jType: Any, classTypeParams: List[Any], typeArgs: Optional[List[TypeStr]]):
+    if jType in classTypeParams and typeArgs is not None:
+        # it is a type variable - resolve to the actual type argument
+        idx = classTypeParams.index(jType)
+        return typeArgs[idx]
+    else:
+        # it is something else (e.g. a java type) - resolve in the usual way
+        return pythonType(jType)
+
+
 def mangleCallableTypeArgs(jClass: Any, typeArgs: Optional[List[TypeStr]]) -> Optional[List[TypeStr]]:
     """
-    Mangle the type args from a Java functional interface so it matches what typing.Callable expects.
+    Generate sensible type arguments for typing.Callable.
 
-    E.g. for Function: <Param1, Param2, ..., Return> (Java) -> [[Param1, Param2,...], Return]
+    The JPype customizer that maps java FunctionalInterface to python Callable is a special story when it comes to
+    generic type arguments.
+
+    Since FunctionalInterfaces in Java are classes, type arguments are given at the class level, e.g.
+    ```java
+    @FunctionalInterface
+    public interface Comparator<T> {
+        int compare(T o1, T o2);
+    }
+    ```
+    However, the type arguments for typing.Callable depend BOTH on the type arguments of the class AND the signature
+    of the (only) method in the FunctionalInterface, e.g.
+    ```python
+    typing.Callable[[T, T], int]
+    ```
+    for the above example.
+
+    TODO - NOT IMPLEMENTED YET:
+    To make things even more complicated, FunctionalInterface classes can inherit from other FunctionalInterfaces,
+    fixing or specifying certain type parameters:
+    ```java
+    @FunctionalInterface
+    public interface BinaryOperator<T> extends BiFunction<T,T,T> {  }
+
+    @FunctionalInterface
+    public interface BiFunction<T, U, R> {
+        R apply(T t, U u);
+    }
+    ```
+    which should result in
+    ```python
+    typing.Callable[[T, T], T]
+    ```
+
     """
-    if typeArgs is None:
-        return None
-    jClassName = jClass.class_.getName()
-    # we should use reflection here ...
-    if 'Function' in jClassName:
-        return [TypeStr('', typeArgs[0:-1]), typeArgs[-1]]
-    elif 'Consumer' in jClassName:
-        return [TypeStr('', typeArgs), TypeStr('None')]
-    elif 'Supplier' in jClassName:
-        return [TypeStr('', []), typeArgs[0]]
-    elif 'UnaryOperator' in jClassName:
-        return [TypeStr('', [typeArgs[0]]), typeArgs[0]]
-    elif 'Comparator' in jClassName:
-        return [TypeStr('', [typeArgs[0], typeArgs[0]]), TypeStr('int')]
-    elif 'Predicate' in jClassName:
-        return [TypeStr('', [typeArgs[0]]), TypeStr('bool')]
-    else:
-        return [TypeStr('', typeArgs), TypeStr('None')]
-
+    invokedMethod = invokedMethodOnFunctionalInterface(jClass)
+    if invokedMethod is None:
+        return None  # TODO: implement inheritance case ...
+    jClassTypeParameters = list(jClass.getTypeParameters())
+    resolvedParamTypes = [resolveFunctionalInterfaceMethodType(paramType, jClassTypeParameters, typeArgs)
+                          for paramType in invokedMethod.getGenericParameterTypes()]
+    resolvedReturnType = resolveFunctionalInterfaceMethodType(invokedMethod.getGenericReturnType(),
+                                                              jClassTypeParameters, typeArgs)
+    return [TypeStr('', resolvedParamTypes), resolvedReturnType]
 
 
 def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] = None) -> TypeStr:
@@ -350,8 +410,8 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
         return TypeStr(typeName)
 
     try:
-        jClass = jpype.JClass(typeName)
-        classHints = jClass._hints  # noqa: JPype does not expose the class hints, but we need them ...
+        jpClass = jpype.JClass(typeName)
+        classHints = jpClass._hints  # noqa: JPype does not expose the class hints, but we need them ...
     except TypeError:
         # In case JClass can not be constructed, we assume JPype won't do any implicit conversion.
         # Usually this should not happen since the class has been loaded before; except for some edge cases with
@@ -373,7 +433,7 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
 
         if typeName == 'typing.Callable' and typeArgs is not None:
             # callable is a special case that needs mangling of type arguments
-            union.append(TypeStr(typeName, mangleCallableTypeArgs(jClass, typeArgs)))
+            union.append(TypeStr(typeName, mangleCallableTypeArgs(jpClass.class_, typeArgs)))
         else:
             union.append(TypeStr(typeName, typeArgs or []))
     if len(union) > 1:
@@ -580,6 +640,12 @@ def isPublic(member: Any) -> bool:
     """ Check if a Java class member is public. """
     from java.lang.reflect import Modifier  # noqa
     return member.getModifiers() & Modifier.PUBLIC > 0
+
+
+def isAbstract(member: Any) -> bool:
+    """ Check if a Java class member is public. """
+    from java.lang.reflect import Modifier  # noqa
+    return member.getModifiers() & Modifier.ABSTRACT > 0
 
 
 def generateJavaMethodStub(parentName: str,
