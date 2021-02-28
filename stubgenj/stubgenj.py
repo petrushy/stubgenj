@@ -223,16 +223,15 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str) -> Non
 def isJavaClass(obj: type) -> bool:
     """ Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes.
     >>> import stubgenj.stubgenj as sg
-    >>> import jpype as jp
-    >>> if not jp.isJVMStarted(): jp.startJVM() # noqa
-    >>> sg.isJavaClass(jp.JClass('java.lang.Object'))
+    >>> import java.lang.Object  # noqa
+    >>> sg.isJavaClass(java.lang.Object)
     True
-    >>> sg.isJavaClass(jp.JClass('java.util.List'))
+    >>> import java.util.List  # noqa
+    >>> sg.isJavaClass(java.util.List)
     True
-    >>> sg.isJavaClass(jp.JPackage('java.util'))
+    >>> import java.util  # noqa
+    >>> sg.isJavaClass(java.util)
     False
-    >>> sg.isJavaClass(jp.JPackage('java.util').List)
-    True
     >>> sg.isJavaClass(str)
     False
     >>> sg.isJavaClass(list)
@@ -270,17 +269,18 @@ def dependenciesSatisfied(package: jpype.JPackage, jClass: jpype.JClass, done: S
 def javaSuperTypes(jClass: jpype.JClass) -> List[Any]:
     """ Get all supertypes of the provided Java class, up to, but not including, java.lang.Object
     >>> import stubgenj.stubgenj as sg
-    >>> import jpype as jp
-    >>> if not jp.isJVMStarted(): jp.startJVM() # noqa
-    >>> for t in sg.javaSuperTypes(jp.JClass('java.lang.Object')): print(t)
+    >>> import java.lang.Object  # noqa
+    >>> for t in sg.javaSuperTypes(java.lang.Object): print(t)
     ...
-    >>> for t in sg.javaSuperTypes(jp.JClass('java.lang.Class')): print(t)
+    >>> import java.lang.Class  # noqa
+    >>> for t in sg.javaSuperTypes(java.lang.Class): print(t)
     ...
     interface java.io.Serializable
     interface java.lang.reflect.GenericDeclaration
     interface java.lang.reflect.Type
     interface java.lang.reflect.AnnotatedElement
-    >>> for t in sg.javaSuperTypes(jp.JClass('java.util.ArrayList')): print(t)
+    >>> import java.util.ArrayList  # noqa
+    >>> for t in sg.javaSuperTypes(java.util.ArrayList): print(t)
     ...
     java.util.AbstractList<E>
     java.util.List<E>
@@ -394,8 +394,6 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
     The resulting TypeStr may be an Union[...], in case JPype accepts multiple types for implicit conversion.
     E.g. for java.util.Collection this gives typing.Union[typing.Sequence, java.util.Collection]
     >>> import stubgenj.stubgenj as sg
-    >>> import jpype as jp
-    >>> if not jp.isJVMStarted(): jp.startJVM() # noqa
     >>> sg.handleImplicitConversions('java.lang.String', [])
     TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[]), TypeStr(name='str', typeArgs=[])])
     >>> sg.handleImplicitConversions('java.lang.Class')
@@ -458,8 +456,6 @@ def translateTypeName(typeName: str, typeArgs: Optional[List[TypeStr]] = None,
     apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
 
     >>> import stubgenj.stubgenj as sg
-    >>> import jpype as jp
-    >>> if not jp.isJVMStarted(): jp.startJVM() # noqa
     >>> sg.translateTypeName('java.util.Collection', [sg.TypeStr('str')])
     TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='str', typeArgs=[])])
     >>> sg.translateTypeName('java.util.Collection', [sg.TypeStr('str')], implicitConversions=True)
