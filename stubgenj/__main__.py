@@ -1,11 +1,15 @@
 import argparse
 from glob import glob
-import jpype.imports
-import logging
 import importlib
-from .stubgenj import generateJavaStubs
+import logging
+
+import jpype.imports
+
+from . import generateJavaStubs
+
 
 log = logging.getLogger(__name__)
+
 
 if __name__ == '__main__':
     logging.basicConfig(level='INFO')

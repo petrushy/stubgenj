@@ -26,10 +26,10 @@ Authors:
     P. Elson        <philip.elson@cern.ch>
 """
 
+import dataclasses
 import functools
 import pathlib
 import re
-import dataclasses
 from typing import List, Optional, Any, Set, Type, Union, Generator
 
 import jpype
@@ -114,9 +114,10 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage], useStubsSuffix: bool
 
 def filterClassNamesInPackage(packageName: str, types: Set[str]) -> Set[str]:
     """ From the provided list of class names, filter and return those which are DIRECT descendants of the package
-    >>> import stubgenj.stubgenj as sg
-    >>> sorted(sg.filterClassNamesInPackage('cern.package', {'cern.package.Test', 'cern.package.subpackage.Test', 'cern.package.Test$Inner', 'cern.Class', 'cern.package.Class'}))
+
+    >>> sorted(filterClassNamesInPackage('cern.package', {'cern.package.Test', 'cern.package.subpackage.Test', 'cern.package.Test$Inner', 'cern.Class', 'cern.package.Class'}))
     ['Class', 'Test']
+
     """
     localTypes = set()  # type: Set[str]
     for typ in types:
@@ -222,20 +223,21 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str) -> Non
 
 def isJavaClass(obj: type) -> bool:
     """ Check if a type is a 'real' Java class. This excludes synthetic/anonymous Java classes.
-    >>> import stubgenj.stubgenj as sg
+
     >>> import java.lang.Object  # noqa
-    >>> sg.isJavaClass(java.lang.Object)
+    >>> isJavaClass(java.lang.Object)
     True
     >>> import java.util.List  # noqa
-    >>> sg.isJavaClass(java.util.List)
+    >>> isJavaClass(java.util.List)
     True
     >>> import java.util  # noqa
-    >>> sg.isJavaClass(java.util)
+    >>> isJavaClass(java.util)
     False
-    >>> sg.isJavaClass(str)
+    >>> isJavaClass(str)
     False
-    >>> sg.isJavaClass(list)
+    >>> isJavaClass(list)
     False
+
     """
     if not isinstance(obj, jpype.JClass) or not hasattr(obj, 'class_'):
         return False
@@ -268,26 +270,27 @@ def dependenciesSatisfied(package: jpype.JPackage, jClass: jpype.JClass, done: S
 
 def javaSuperTypes(jClass: jpype.JClass) -> List[Any]:
     """ Get all supertypes of the provided Java class, up to, but not including, java.lang.Object
-    >>> import stubgenj.stubgenj as sg
+
     >>> import java.lang.Object  # noqa
-    >>> for t in sg.javaSuperTypes(java.lang.Object): print(t)
+    >>> for t in javaSuperTypes(java.lang.Object): print(t)
     ...
     >>> import java.lang.Class  # noqa
-    >>> for t in sg.javaSuperTypes(java.lang.Class): print(t)
+    >>> for t in javaSuperTypes(java.lang.Class): print(t)
     ...
     interface java.io.Serializable
     interface java.lang.reflect.GenericDeclaration
     interface java.lang.reflect.Type
     interface java.lang.reflect.AnnotatedElement
     >>> import java.util.ArrayList  # noqa
-    >>> for t in sg.javaSuperTypes(java.util.ArrayList): print(t)
+    >>> for t in javaSuperTypes(java.util.ArrayList): print(t)
     ...
     java.util.AbstractList<E>
     java.util.List<E>
     interface java.util.RandomAccess
     interface java.lang.Cloneable
     interface java.io.Serializable
-     """
+
+    """
     superTypes = [jClass.class_.getGenericSuperclass()] + list(jClass.class_.getGenericInterfaces())
     if superTypes[0] is None or superTypes[0].getTypeName() == 'java.lang.Object':
         del superTypes[0]
@@ -393,15 +396,16 @@ def handleImplicitConversions(typeName: str, typeArgs: Optional[List[TypeStr]] =
     Construct a TypeStr to be used as a METHOD ARGUMENT, taking into account implicit conversions by JPype.
     The resulting TypeStr may be an Union[...], in case JPype accepts multiple types for implicit conversion.
     E.g. for java.util.Collection this gives typing.Union[typing.Sequence, java.util.Collection]
-    >>> import stubgenj.stubgenj as sg
-    >>> sg.handleImplicitConversions('java.lang.String', [])
+
+    >>> handleImplicitConversions('java.lang.String', [])
     TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[]), TypeStr(name='str', typeArgs=[])])
-    >>> sg.handleImplicitConversions('java.lang.Class')
+    >>> handleImplicitConversions('java.lang.Class')
     TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.lang.Class', typeArgs=[]), TypeStr(name='_jpype._JClass', typeArgs=[])])
-    >>> sg.handleImplicitConversions('java.util.Collection', [sg.TypeStr('java.lang.String')])
+    >>> handleImplicitConversions('java.util.Collection', [TypeStr('java.lang.String')])
     TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[])]), TypeStr(name='typing.Sequence', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[])])])
-    >>> sg.handleImplicitConversions('cern.custom.Class')
+    >>> handleImplicitConversions('cern.custom.Class')
     TypeStr(name='cern.custom.Class', typeArgs=None)
+
     """
     if typeName == 'java.lang.Throwable':
         # workaround - jpype reporting too many implicit conversions ?
@@ -455,19 +459,19 @@ def translateTypeName(typeName: str, typeArgs: Optional[List[TypeStr]] = None,
     Additionally, implicitConversions=True indicates that the type is used as METHOD ARGUMENT. In this case we also
     apply the mangling by handleImplicitConversions() to account for JPype implicit type conversions.
 
-    >>> import stubgenj.stubgenj as sg
-    >>> sg.translateTypeName('java.util.Collection', [sg.TypeStr('str')])
+    >>> translateTypeName('java.util.Collection', [TypeStr('str')])
     TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='str', typeArgs=[])])
-    >>> sg.translateTypeName('java.util.Collection', [sg.TypeStr('str')], implicitConversions=True)
+    >>> translateTypeName('java.util.Collection', [TypeStr('str')], implicitConversions=True)
     TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='str', typeArgs=[])]), TypeStr(name='typing.Sequence', typeArgs=[TypeStr(name='str', typeArgs=[])])])
-    >>> sg.translateTypeName('java.lang.Object')
+    >>> translateTypeName('java.lang.Object')
     TypeStr(name='typing.Any', typeArgs=[])
-    >>> sg.translateTypeName('java.lang.Class', [sg.TypeStr('java.util.List')])
+    >>> translateTypeName('java.lang.Class', [TypeStr('java.util.List')])
     TypeStr(name='typing.Type', typeArgs=[TypeStr(name='java.util.List', typeArgs=[])])
-    >>> sg.translateTypeName('void')
+    >>> translateTypeName('void')
     TypeStr(name='None', typeArgs=[])
-    >>> sg.translateTypeName('java.lang.Integer')
+    >>> translateTypeName('java.lang.Integer')
     TypeStr(name='int', typeArgs=[])
+
     """
     if typeName in ('void', 'java.lang.Void'):
         return TypeStr('None')
