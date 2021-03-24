@@ -16,8 +16,8 @@ with (HERE / 'README.md').open('rt') as fh:
 
 REQUIREMENTS: dict = {
     'core': [
-        'JPype1>=1.2.1',
-        'six',
+        'dataclasses;python_version<"3.7"',
+        'JPype1~=1.2.1',
     ],
     'test': [
         'pytest',

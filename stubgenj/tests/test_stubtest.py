@@ -1,7 +1,9 @@
 import logging
+import os
+import pathlib
+import shutil
 import tempfile
 
-import os, shutil, pathlib
 import jpype as jp
 import mypy.build
 import mypy.modulefinder
