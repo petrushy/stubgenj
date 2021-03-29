@@ -28,7 +28,7 @@ if __name__ == '__main__':
                              'consult the JPype documentation on the convertStrings flag for details')
     parser.add_argument('--no-stubs-suffix', dest='with_stubs_suffix', action='store_false', default=True,
                         help='do not use PEP-561 "-stubs" suffix for top-level packages')
-    parser.add_argument('--no-jpype-stubs', dest='with_jpype_stubs', action='store_false', default=True,
+    parser.add_argument('--no-jpackage-stubs', dest='with_jpackage_stubs', action='store_false', default=True,
                         help='do not create a partial jpype-stubs package for jp.JPackage("<tld>") type interfaces')
 
     args = parser.parse_args()
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         prefixPackages,
         useStubsSuffix=args.with_stubs_suffix,
         outputDir=args.output_dir,
-        jpypeStubs=args.with_jpype_stubs,
+        jpypeJPackageStubs=args.with_jpackage_stubs,
     )
     log.info('Generation done.')
     jpype.java.lang.Runtime.getRuntime().halt(0)

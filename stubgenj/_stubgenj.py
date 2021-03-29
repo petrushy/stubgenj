@@ -87,7 +87,7 @@ def packageAndSubPackages(package: jpype.JPackage) -> Generator[jpype.JPackage, 
 def generateJavaStubs(parentPackages: List[jpype.JPackage],
                       useStubsSuffix: bool = True,
                       outputDir: Union[str, pathlib.Path] = '.',
-                      jpypeStubs: bool = True,
+                      jpypeJPackageStubs: bool = True,
                       ) -> None:
     """
     Main entry point. Recursively generate stubs for the provided packages and all sub-packages.
@@ -103,7 +103,7 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
     log.info(f'Collected {len(packages)} packages ...')
 
     # Map package names to a list of direct subpackages
-    # (e.g {'foo.bar': ['boo.bar.wibble', 'foo.bar.wobble']}).
+    # (e.g {'foo.bar': ['wibble', 'wobble']}).
     subpackages = collections.defaultdict(list)
     for pkg in packages:
         # If this package is a subpackage (i.e. it has a "." in the name) then
@@ -127,8 +127,8 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
 
         generateStubsForJavaPackage(pkg, submodulePath / '__init__.pyi', subpackages[pkg.__name__])
 
-    if jpypeStubs:
-        tld_packages = [name for name in subpackages if '.' not in name]
+    if jpypeJPackageStubs:
+        tld_packages = {name.split('.')[0] for name in subpackages}
         generateJPypeJPackageOverloadStubs(outputPath / 'jpype-stubs', sorted(tld_packages))
 
 
@@ -204,7 +204,7 @@ def provideCustomizerStubs(customizersUsed: Set[Type], importOutput: List[str], 
 def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpackages: List[str]) -> None:
     """ Generate stubs for a single Java package, represented as a python package with a single __init__ module. """
     pkg_name = package.__name__
-    javaClasses = list(packageClasses(package))
+    javaClasses = sorted(packageClasses(package), key=lambda pkg: pkg.__name__)
     log.info(f'Generating stubs for {pkg_name} ({len(javaClasses)} classes, {len(subpackages)} subpackages)')
 
     importOutput = []  # type: List[str]
@@ -256,7 +256,36 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
                 classOutput.append('')
                 generateEmptyClassStub(missingPrivateClass, classesDone=classesDone, output=classOutput)
 
-    classesInModule = [className for className in classesDone if '$' not in className]
+    generateModuleProtocol(
+        pkg_name,
+        sorted([className for className in classesDone if '$' not in className]),
+        subpackages, importOutput, classOutput,
+    )
+
+    if customizersUsed:
+        provideCustomizerStubs(customizersUsed, importOutput, outputFile)
+
+    output = ['import typing\n']
+
+    for line in sorted(set(importOutput)):
+        output.append(line)
+
+    output.extend([''] * 2)
+    for line in classOutput:
+        output.append(line)
+    with open(outputFile, 'w') as file:
+        for line in output:
+            file.write(f'{line}\n')
+
+
+def generateModuleProtocol(
+        pkg_name:str,
+        classesInModule: List[str],
+        subpackages: List[str],
+        importOutput: List[str],
+        classOutput: List[str]
+) -> None:
+    """ Mutate the given import and class output to include a __module_protocol__ typing.Protocol """
 
     protocolOutput = [
         'class __module_protocol__(typing.Protocol):',
@@ -276,21 +305,6 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
     if classOutput:
         classOutput.extend([''] * 2)
     classOutput.extend(protocolOutput)
-
-    if customizersUsed:
-        provideCustomizerStubs(customizersUsed, importOutput, outputFile)
-
-    output = ['import typing\n']
-
-    for line in sorted(set(importOutput)):
-        output.append(line)
-
-    output.extend([''] * 2)
-    for line in classOutput:
-        output.append(line)
-    with open(outputFile, 'w') as file:
-        for line in output:
-            file.write(f'{line}\n')
 
 
 def isJavaClass(obj: type) -> bool:
