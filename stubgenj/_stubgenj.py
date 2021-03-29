@@ -31,7 +31,6 @@ import dataclasses
 import functools
 import pathlib
 import re
-import textwrap
 from typing import List, Optional, Any, Set, Type, Union, Generator
 
 import jpype
@@ -148,12 +147,11 @@ def generateJPypeJPackageOverloadStubs(outputPath: pathlib.Path, topLevelPackage
     overloads = []
     for name in topLevelPackages:
         imports.append(f"import {name}")
-        overloads.append(
-            textwrap.dedent(f"""
-            @typing.overload
-            def JPackage(__package_name: typing.Literal['{name}']) -> {name}.__module_protocol__: ...
-            """)
-        )
+        overloads.extend([
+            '',
+            '@typing.overload',
+            f'def JPackage(__package_name: typing.Literal[\'{name}\']) -> {name}.__module_protocol__: ...\n',
+        ])
 
     with jpypeStubsPath.open('wt') as fh:
         fh.writelines([
@@ -161,7 +159,7 @@ def generateJPypeJPackageOverloadStubs(outputPath: pathlib.Path, topLevelPackage
             'import typing\n\n',
             '\n'.join(imports) + '\n\n',
             '\n'.join(overloads) + '\n\n',
-            'def JPackage(__package_name) -> types.ModuleType: ...\n',
+            'def JPackage(__package_name) -> types.ModuleType: ...\n\n',
         ])
 
 
@@ -203,9 +201,9 @@ def provideCustomizerStubs(customizersUsed: Set[Type], importOutput: List[str], 
 
 def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpackages: List[str]) -> None:
     """ Generate stubs for a single Java package, represented as a python package with a single __init__ module. """
-    pkg_name = package.__name__
+    pkgName = package.__name__
     javaClasses = sorted(packageClasses(package), key=lambda pkg: pkg.__name__)
-    log.info(f'Generating stubs for {pkg_name} ({len(javaClasses)} classes, {len(subpackages)} subpackages)')
+    log.info(f'Generating stubs for {pkgName} ({len(javaClasses)} classes, {len(subpackages)} subpackages)')
 
     importOutput = []  # type: List[str]
     classOutput = []  # type: List[str]
@@ -226,7 +224,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
         #  - first, we attempt to get them by explicitly reading the attribute from the JPackage object. This may work
         #    for certain protected or module internal (Java 11) classes.
         #  - failing that, we generate an empty stub.
-        missingPrivateClasses = filterClassNamesInPackage(pkg_name, classesUsed) - classesDone
+        missingPrivateClasses = filterClassNamesInPackage(pkgName, classesUsed) - classesDone
         for missingPrivateClass in sorted(missingPrivateClasses):
             cls = getattr(package, missingPrivateClass, None)
 
@@ -257,7 +255,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
                 generateEmptyClassStub(missingPrivateClass, classesDone=classesDone, output=classOutput)
 
     generateModuleProtocol(
-        pkg_name,
+        pkgName,
         sorted([className for className in classesDone if '$' not in className]),
         subpackages, importOutput, classOutput,
     )
@@ -279,7 +277,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
 
 
 def generateModuleProtocol(
-        pkg_name:str,
+        pkgName: str,
         classesInModule: List[str],
         subpackages: List[str],
         importOutput: List[str],
@@ -289,7 +287,7 @@ def generateModuleProtocol(
 
     protocolOutput = [
         'class __module_protocol__(typing.Protocol):',
-        f'    # A module protocol which reflects the result of ``jp.JPackage("{pkg_name}")``.',
+        f'    # A module protocol which reflects the result of ``jp.JPackage("{pkgName}")``.',
         '',
     ]
 
@@ -297,8 +295,8 @@ def generateModuleProtocol(
         protocolOutput.append(f'    {className}: typing.Type[{className}]')
 
     for subpackage_name in subpackages:
-        importOutput.append(f'import {pkg_name}.{subpackage_name}')
-        protocolOutput.append(f'    {subpackage_name}: {pkg_name}.{subpackage_name}.__module_protocol__')
+        importOutput.append(f'import {pkgName}.{subpackage_name}')
+        protocolOutput.append(f'    {subpackage_name}: {pkgName}.{subpackage_name}.__module_protocol__')
     if not classesInModule and not subpackages:
         protocolOutput.append('    pass')
 
