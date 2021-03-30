@@ -294,9 +294,9 @@ def generateModuleProtocol(
     for className in classesInModule:
         protocolOutput.append(f'    {className}: typing.Type[{className}]')
 
-    for subpackage_name in subpackages:
-        importOutput.append(f'import {pkgName}.{subpackage_name}')
-        protocolOutput.append(f'    {subpackage_name}: {pkgName}.{subpackage_name}.__module_protocol__')
+    for subpackageName in subpackages:
+        importOutput.append(f'import {pkgName}.{subpackageName}')
+        protocolOutput.append(f'    {subpackageName}: {pkgName}.{subpackageName}.__module_protocol__')
     if not classesInModule and not subpackages:
         protocolOutput.append('    pass')
 
