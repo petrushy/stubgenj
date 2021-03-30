@@ -18,25 +18,29 @@ if __name__ == '__main__':
                         help='package prefixes to generate stubs for (e.g. org.myproject)')
     parser.add_argument('--jvmpath', type=str,
                         help='path to the JVM ("libjvm.so", "jvm.dll", ...) (default: use system default JVM)')
-    parser.add_argument('--classpath', type=str,
+    parser.add_argument('--classpath', type=str, default='.',
                         help='java class path to use, separated by ":". '
                              'glob-like expressions (e.g. dir/*.jar) are supported (default: .)')
-    parser.add_argument('--output-dir', type=str,
+    parser.add_argument('--output-dir', type=str, default='.',
                         help='path to write stubs to (default: .)')
-    parser.add_argument('--convert-strings', dest='convert_strings', action='store_true',
+    parser.add_argument('--convert-strings', dest='convert_strings', action='store_true', default=False,
                         help='convert java.lang.String to python str in return types. '
                              'consult the JPype documentation on the convertStrings flag for details')
-    parser.add_argument('--no-stubs-suffix', dest='stubs_suffix', action='store_true',
+    parser.add_argument('--no-stubs-suffix', dest='with_stubs_suffix', action='store_false', default=True,
                         help='do not use PEP-561 "-stubs" suffix for top-level packages')
-
-    parser.set_defaults(stubs_suffix=True, classpath='.', output_dir='.', convert_strings=False)
+    parser.add_argument('--no-jpackage-stubs', dest='with_jpackage_stubs', action='store_false', default=True,
+                        help='do not create a partial jpype-stubs package for jp.JPackage("<tld>") type interfaces')
 
     args = parser.parse_args()
     classpath = [c for c_in in args.classpath.split(':') for c in glob(c_in)]
     log.info('Starting JPype JVM with classpath ' + str(classpath))
     jpype.startJVM(jvmpath=args.jvmpath, classpath=classpath, convertStrings=args.convert_strings)  # noqa: exists
     prefixPackages = [importlib.import_module(prefix) for prefix in args.prefixes]
-
-    generateJavaStubs(prefixPackages, useStubsSuffix=args.stubs_suffix, outputDir=args.output_dir)
+    generateJavaStubs(
+        prefixPackages,
+        useStubsSuffix=args.with_stubs_suffix,
+        outputDir=args.output_dir,
+        jpypeJPackageStubs=args.with_jpackage_stubs,
+    )
     log.info('Generation done.')
     jpype.java.lang.Runtime.getRuntime().halt(0)
