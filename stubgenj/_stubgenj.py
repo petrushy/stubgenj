@@ -257,13 +257,13 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
     generateModuleProtocol(
         pkgName,
         sorted([className for className in classesDone if '$' not in className]),
-        subpackages, importOutput, classOutput,
+        subpackages, importOutput, classOutput
     )
 
     if customizersUsed:
         provideCustomizerStubs(customizersUsed, importOutput, outputFile)
 
-    output = ['import typing\n']
+    output = []
 
     for line in sorted(set(importOutput)):
         output.append(line)
@@ -284,6 +284,8 @@ def generateModuleProtocol(
         classOutput: List[str]
 ) -> None:
     """ Mutate the given import and class output to include a __module_protocol__ typing.Protocol """
+
+    importOutput.append('import typing')
 
     protocolOutput = [
         'class __module_protocol__(typing.Protocol):',
