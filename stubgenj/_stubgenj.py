@@ -31,7 +31,7 @@ import dataclasses
 import functools
 import pathlib
 import re
-from typing import List, Optional, Any, Set, Type, Union, Generator, Dict
+from typing import Dict, List, Optional, Any, Set, Type, Union, Generator
 
 import jpype
 from jpype._pykeywords import pysafe  # noqa : jpype does not expose a public API for the Java name mangling it applies
@@ -104,36 +104,67 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
     Errors in stub generation are treated in a lenient way; failing to generate stubs for one or more java classes
     will not stop stub generation for other classes.
     """
-    packages = []  # type: List[jpype.JPackage]
+    packages: Dict[str, jpype.JPackage] = {}
     for pkg in parentPackages:
-        packages.extend(list(packageAndSubPackages(pkg)))
+        packages.update({pkg.__name__: pkg for pkg in packageAndSubPackages(pkg)})
 
     log.info(f'Collected {len(packages)} packages ...')
 
-    # Map package names to a list of direct subpackages
-    # (e.g {'foo.bar': ['wibble', 'wobble']}).
-    subpackages = collections.defaultdict(list)
-    for pkg in packages:
-        # If this package is a subpackage (i.e. it has a "." in the name) then
-        # get its parent's name, and add the package to the parent's list of
-        # subpackages.
-        if '.' in pkg.__name__:
-            parent, name = pkg.__name__.rsplit('.', 1)
-            subpackages[parent].append(name)
-
+    # Map package names to a set of direct subpackages
+    # (e.g {'foo.bar': {'wibble', 'wobble'}}).
+    subpackages = collections.defaultdict(set)
     outputPath = pathlib.Path(outputDir)
-    for pkg in packages:
-        pathParts = pkg.__name__.split('.')
-        if useStubsSuffix:
-            pathParts[0] += '-stubs'
-        submodulePath = outputPath
-        for pathPart in pathParts:
-            submodulePath = submodulePath / pathPart
-            submodulePath.mkdir(parents=True, exist_ok=True)
-            initFile = submodulePath / '__init__.pyi'
-            initFile.touch()
+    # Prepare a dictionary for *all* package names (including the parents of
+    # the actual packages that we wish to generate stubs for) which maps to the
+    # path of the appropriate __init__.pyi stubfile.
+    stubfilePackagesPaths = {}
+    for pkgName in packages:
+        pkgParts = pkgName.split('.')
 
-        generateStubsForJavaPackage(pkg, submodulePath / '__init__.pyi', subpackages[pkg.__name__], includeJavadoc)
+        submodulePath = outputPath
+        submoduleName = ''
+        for pkgPart in pkgParts:
+            if not submoduleName and useStubsSuffix:
+                submodulePath = submodulePath / f'{pkgPart}-stubs'
+            else:
+                submodulePath = submodulePath / pkgPart
+
+            if not submoduleName:
+                submoduleName = pkgPart
+            else:
+                submoduleName += f'.{pkgPart}'
+
+            if '.' in submoduleName:
+                parent, name = submoduleName.rsplit('.', 1)
+                subpackages[parent].add(name)
+
+            stubfilePackagesPaths[submoduleName] = submodulePath / '__init__.pyi'
+
+    for pkgName, stubfilePath in stubfilePackagesPaths.items():
+        stubfilePath.parent.mkdir(parents=True, exist_ok=True)
+
+        pkg = packages.get(pkgName)
+        if pkg is not None:
+            generateStubsForJavaPackage(pkg, stubfilePath, list(subpackages[pkgName]), includeJavadoc)
+        else:
+            importOutput = []
+            classOutput = []
+            generateModuleProtocol(
+                pkgName,
+                [],
+                list(subpackages[pkgName]), importOutput, classOutput,
+            )
+            output = []
+
+            for line in sorted(set(importOutput)):
+                output.append(line)
+
+            output.extend([''] * 2)
+            for line in classOutput:
+                output.append(line)
+            with stubfilePath.open('wt') as file:
+                for line in output:
+                    file.write(f'{line}\n')
 
     if jpypeJPackageStubs:
         tld_packages = {name.split('.')[0] for name in subpackages}
