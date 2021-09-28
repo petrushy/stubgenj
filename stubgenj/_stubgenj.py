@@ -216,8 +216,11 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
         if not javaClassesToGenerate:
             javaClassesToGenerate = javaClasses  # some inner class cases - will generate them with full names
         for cls in sorted(javaClassesToGenerate, key=lambda c: c.__name__):
-            generateJavaClassStub(package, cls, classesDone, classesUsed, customizersUsed,
-                                  output=classOutput, importsOutput=importOutput)
+            try:
+                generateJavaClassStub(package, cls, classesDone, classesUsed, customizersUsed,
+                                      output=classOutput, importsOutput=importOutput)
+            except jpype.JException as e:  # exception during class loading e.g. missing dependencies (spark...)
+                log.warning(f'Skipping {cls} due to {e}')
             javaClasses.remove(cls)
         # Collect all classes in this java package which are referenced by other class stubs, but have not yet been
         # generated. To avoid unsatisfied type references in the stubs, we have to generate stubs for them:
@@ -337,7 +340,10 @@ def dependenciesSatisfied(package: jpype.JPackage, jClass: jpype.JClass, done: S
     Check if all supertypes of the provided class and any inner classes are already generated.
     In python, unlike in Java, the definition order of classes within a module matters.
     """
-    superTypes = [pythonType(b) for b in javaSuperTypes(jClass)]
+    try:
+        superTypes = [pythonType(b) for b in javaSuperTypes(jClass)]
+    except jpype.JException:  # exception during class loading of superclasses e.g. missing dependencies (spark...)
+        return False
     for superType in superTypes:
         superTypeName = superType.name
         superTypeModule = superTypeName[:superTypeName.rindex('.')]
