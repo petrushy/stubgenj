@@ -2,9 +2,6 @@
 PEP-484 python stub generator for Java modules using the JPype import system. Originally based on mypy stubgenc.
 
 ## Usage through cmmnbuild-dep-manager
-***Not yet implemented.***
-
-Plan:
 ```
 $ python -m cmmnbuild_dep_manager stubgen
 ```
