@@ -3,12 +3,12 @@ from java.util import HashMap
 pydict = {'hello': 1.0, 'world': 42.0}
 java_map = HashMap(pydict)
 
-reveal_type(java_map)              # N: Revealed type is 'java.util.HashMap[builtins.str*, builtins.float*]'
-reveal_type(java_map.values())     # N: Revealed type is 'java.util.Collection[builtins.float*]'
-reveal_type(java_map.keySet())     # N: Revealed type is 'java.util.Set[builtins.str*]'
+reveal_type(java_map)              # N: Revealed type is "java.util.HashMap[builtins.str*, builtins.float*]"
+reveal_type(java_map.values())     # N: Revealed type is "java.util.Collection[builtins.float*]"
+reveal_type(java_map.keySet())     # N: Revealed type is "java.util.Set[builtins.str*]"
 
-reveal_type(java_map.get('hello')) # N: Revealed type is 'builtins.float*'
-reveal_type(java_map['hello'])     # N: Revealed type is 'builtins.float*'
+reveal_type(java_map.get('hello')) # N: Revealed type is "builtins.float*"
+reveal_type(java_map['hello'])     # N: Revealed type is "builtins.float*"
 
 java_map.put('test1', 42)
 java_map['test2'] = 42

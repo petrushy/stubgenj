@@ -67,18 +67,18 @@ pylist = ['test', '1', '2']
 java_list = ArrayList(pylist)
 
 str_stream = java_list.stream()
-reveal_type(str_stream)  # N: Revealed type is 'java.util.stream.Stream[builtins.str*]'
+reveal_type(str_stream)  # N: Revealed type is "java.util.stream.Stream[builtins.str*]"
 
 int_stream = str_stream.map(map_str_to_int)
-reveal_type(int_stream)  # N: Revealed type is 'java.util.stream.Stream[builtins.int*]'
+reveal_type(int_stream)  # N: Revealed type is "java.util.stream.Stream[builtins.int*]"
 
 int_stream.filter(str_predicate) # E: Argument 1 to "filter" of "Stream" has incompatible type "Callable[[str], bool]"; expected "Union[Predicate[int], Callable[[int], bool]]"
 
 int_stream_2 = int_stream.filter(int_predicate)
-reveal_type(int_stream_2)  # N: Revealed type is 'java.util.stream.Stream[builtins.int*]'
+reveal_type(int_stream_2)  # N: Revealed type is "java.util.stream.Stream[builtins.int*]"
 
 int_stream_2.map(map_atomicint_to_bool) # E: Argument 1 to "map" of "Stream" has incompatible type "Callable[[AtomicInteger], bool]"; expected "Union[Function[int, <nothing>], Callable[[int], <nothing>]]"
 
 atomicint_stream = int_stream_2.map(map_int_to_atomicint)
 java_set = atomicint_stream.collect(Collectors.toSet())
-reveal_type(java_set)  # N: Revealed type is 'java.util.Set*[java.util.concurrent.atomic.AtomicInteger]'
+reveal_type(java_set)  # N: Revealed type is "java.util.Set*[java.util.concurrent.atomic.AtomicInteger]"

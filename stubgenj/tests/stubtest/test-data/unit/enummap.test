@@ -3,7 +3,7 @@ from java.util import EnumMap
 from java.util.concurrent import TimeUnit
 
 timeunit_enummap = EnumMap(TimeUnit)  # type: ignore
-reveal_type(timeunit_enummap)  # N: Revealed type is 'java.util.EnumMap[java.util.concurrent.TimeUnit, Any]'
+reveal_type(timeunit_enummap)  # N: Revealed type is "java.util.EnumMap[java.util.concurrent.TimeUnit, Any]"
 
 timeunit_enummap.put(TimeUnit.SECONDS, 'test')
 timeunit_enummap[TimeUnit.MINUTES] = 'test'
