@@ -210,6 +210,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
 
     classesDone = set()  # type: Set[str]
     classesUsed = set()  # type: Set[str]
+    classesFailed = set()  # type: Set[str]
     customizersUsed = set()  # type: Set[Type]
     while javaClasses:
         javaClassesToGenerate = [c for c in javaClasses if dependenciesSatisfied(package, c, classesDone)]
@@ -221,6 +222,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
                                       output=classOutput, importsOutput=importOutput)
             except jpype.JException as e:  # exception during class loading e.g. missing dependencies (spark...)
                 log.warning(f'Skipping {cls} due to {e}')
+                classesFailed.add(simpleClassNameOf(cls))
             javaClasses.remove(cls)
         # Collect all classes in this java package which are referenced by other class stubs, but have not yet been
         # generated. To avoid unsatisfied type references in the stubs, we have to generate stubs for them:
@@ -229,7 +231,12 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
         #  - failing that, we generate an empty stub.
         missingPrivateClasses = filterClassNamesInPackage(pkgName, classesUsed) - classesDone
         for missingPrivateClass in sorted(missingPrivateClasses):
-            cls = getattr(package, missingPrivateClass, None)
+            cls = None
+            try:
+                if missingPrivateClass not in classesFailed:
+                    cls = getattr(package, missingPrivateClass, None)
+            except jpype.JException as e:  # exception during class loading e.g. missing dependencies (spark...)
+                log.warning(f'Skipping missing class {missingPrivateClass} due to {e}')
 
             if cls is not None:
                 if cls not in javaClasses:
@@ -256,7 +263,6 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
                 log.warning(f'reference to missing class {missingPrivateClass} - generating empty stub')
                 classOutput.append('')
                 generateEmptyClassStub(missingPrivateClass, classesDone=classesDone, output=classOutput)
-
     generateModuleProtocol(
         pkgName,
         sorted([className for className in classesDone if '$' not in className]),
@@ -308,6 +314,10 @@ def generateModuleProtocol(
     if classOutput:
         classOutput.extend([''] * 2)
     classOutput.extend(protocolOutput)
+
+
+def simpleClassNameOf(jClass: jpype.JClass) -> str:
+    return str(jClass.class_.getName()).split('.')[-1]
 
 
 def isJavaClass(obj: type) -> bool:
@@ -1008,7 +1018,7 @@ def generateJavaClassStub(package: jpype.JPackage,
         for line in nestedClassesOutput:
             output.append(f'    {line}')
     classesDone |= classesDoneNested
-    classesDone.add(str(jClass.class_.getName()).split('.')[-1])
+    classesDone.add(simpleClassNameOf(jClass))
 
 
 def generateEmptyClassStub(className: str, classesDone: Set[str], output: List[str]):
