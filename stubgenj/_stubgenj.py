@@ -35,6 +35,7 @@ from typing import List, Optional, Any, Set, Type, Union, Generator
 
 import jpype
 from jpype._pykeywords import pysafe  # noqa : jpype does not expose a public API for the Java name mangling it applies
+from jpype._jclass import _jclassDoc as generate_class_javadoc # noqa : jpype does not expose a public API to getting Javadoc
 
 import logging
 
@@ -1005,10 +1006,16 @@ def generateJavaClassStub(package: jpype.JPackage,
         output.append('')
         output += typeVarOutput
 
+    javadocOutput = ['    ' + javadocLine for javadocLine in generate_class_javadoc(jClass).split('\n')]
+    if javadocOutput:
+        javadocOutput = ['    """'] + javadocOutput + ['    """']
+
     if not constructorsOutput and not methodsOutput and not fieldsOutput and not nestedClassesOutput:
         output.append(f'class {className}{superTypeStr}: ...')
+        # a docstring is not allowed here ...
     else:
         output.append(f'class {className}{superTypeStr}:')
+        output.extend(javadocOutput)
         for line in fieldsOutput:
             output.append(f'    {line}')
         for line in constructorsOutput:
