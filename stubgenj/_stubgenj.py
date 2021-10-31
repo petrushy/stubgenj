@@ -1139,7 +1139,6 @@ def generateJavaClassStub(package: jpype.JPackage,
             output.append('    ...')
         else:
             output.append(f'class {className}{superTypeStr}: ...')
-        # a docstring is not allowed here ...
     else:
         output.append(f'class {className}{superTypeStr}:')
         output.extend(javadocOutput)
