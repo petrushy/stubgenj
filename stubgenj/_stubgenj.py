@@ -31,11 +31,10 @@ import dataclasses
 import functools
 import pathlib
 import re
-from typing import List, Optional, Any, Set, Type, Union, Generator
+from typing import List, Optional, Any, Set, Type, Union, Generator, Dict
 
 import jpype
 from jpype._pykeywords import pysafe  # noqa : jpype does not expose a public API for the Java name mangling it applies
-from jpype._jclass import _jclassDoc as generate_class_javadoc # noqa : jpype does not expose a public API to getting Javadoc
 
 import logging
 
@@ -70,6 +69,14 @@ class JavaFunctionSig:
     args: List[ArgSig]
     retType: TypeStr
     typeVars: List[TypeVarStr]
+
+
+@dataclasses.dataclass(frozen=True)
+class Javadoc:
+    description: str
+    ctors: str = ''
+    methods: Dict[str, str] = dataclasses.field(default_factory=dict)
+    fields: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 def packageAndSubPackages(package: jpype.JPackage) -> Generator[jpype.JPackage, None, None]:
@@ -281,7 +288,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
     output.extend([''] * 2)
     for line in classOutput:
         output.append(line)
-    with open(outputFile, 'w') as file:
+    with open(outputFile, 'w', encoding='utf-8') as file:
         for line in output:
             file.write(f'{line}\n')
 
@@ -751,9 +758,72 @@ def isAbstract(member: Any) -> bool:
     return member.getModifiers() & Modifier.ABSTRACT > 0
 
 
+def splitMethodOverloadJavadoc(signatures: List[JavaFunctionSig], javadoc: str) -> List[str]:
+    """ Split Javadoc by overload signature. The returned list has the same indices as the `signatures` list."""
+    IDENTIFIER_REGEX = r'[a-zA-Z0-9_?]+'
+    TYPE_REGEX = r'[a-zA-Z0-9_?.,:`~\s]+(<[a-zA-Z0-9_?.,:~\s<>\[\]/=-]+>)?`?(\[\])*\s?'
+    GENERIC_ARG_REGEX = rf'[a-zA-Z0-9_?]+( (super {TYPE_REGEX})| (extends {TYPE_REGEX}))?'
+    ARG_SEPARATOR = r',\s?'
+    signatureRegexList = []
+
+    for signature in signatures:
+        # Create a regex that matches signature
+        # (we unescape html escapes &lt; &gt; &nbsp; to <, >, " " to make the regex easier to read
+        # The start of the signature: modifiers (access, default, abstract, etc.)
+        signatureRegex = r'(default\s)?(public|protected|private)?\s?'
+
+        # Add static if this signature for a static method
+        if signature.static:
+            signatureRegex += r'static\s'
+
+        # If there type variables, add a regex that can match <A, B, C extends SomeClass>
+        # (where the number of type variables is fixed to the number in the signature)
+        if len(signature.typeVars) > 0:
+            signatureRegex += f'<{ARG_SEPARATOR.join([GENERIC_ARG_REGEX] * len(signature.typeVars))}>\\s'
+
+        # Next is the return type of the method, which is extremely hard to unify exactly due to html links,
+        # typing.Union sometimes being used, etc. so make it match any type
+        signatureRegex += TYPE_REGEX
+
+        # Next is the signature name
+        signatureRegex += r'\s?' + signature.name
+
+        # Skip the self argument
+        args = signature.args
+        if len(args) > 0 and args[0].argType is None:
+            args = args[1:]
+
+        # Create a regex that matches (int arg, SomeClass arg2, int[] arrayArg)
+        # (where the number of arguments is fixed to the number in the signature
+        signatureRegex += r'\s?\(' + ARG_SEPARATOR.join([TYPE_REGEX + ' ' + IDENTIFIER_REGEX] * len(args)) + r'\)'
+        signatureRegexList.append(re.compile(signatureRegex))
+    javadocLines = javadoc.split('\n')
+    line = 0
+    signatureIndex = None
+    outLines = [[] for _ in signatures]
+
+    while line < len(javadocLines):
+        javadocLine = javadocLines[line]
+        for i, regex in enumerate(signatureRegexList):
+            # check if the current line matches the signature for any overloads
+            match = re.fullmatch(regex, javadocLine)
+            if match is not None:
+                # it matches, so skip to next line and set the signature
+                # the javadoc is for to i
+                signatureIndex = i
+                line = line + 2
+                break
+        if signatureIndex is not None and line < len(javadocLines):
+            # add the line to the current overload javadoc
+            outLines[signatureIndex].append(javadocLines[line])
+        line = line + 1
+    return ['\n'.join(lines) for lines in outLines]
+
+
 def generateJavaMethodStub(parentName: str,
                            name: str,
                            jOverloads: List[Any],
+                           javadoc: Dict[str, str],
                            classesDone: Set[str],
                            classesUsed: Set[str],
                            classTypeVars: List[TypeVarStr],
@@ -784,7 +854,12 @@ def generateJavaMethodStub(parentName: str,
         for typeVar in signature.typeVars:
             output.append(toTypeVarDeclaration(typeVar, parentName, classesDone, classesUsed, importsOutput))
 
-    for signature in signatures:
+    if javadoc.get(name):
+        overloadsJavadoc = splitMethodOverloadJavadoc(signatures, javadoc[name])
+    else:
+        overloadsJavadoc = ['' for _ in signatures]
+
+    for signature, overloadJavadoc in zip(signatures, overloadsJavadoc):
         if isOverloaded:
             output.append('@typing.overload')
         if signature.static:
@@ -802,18 +877,29 @@ def generateJavaMethodStub(parentName: str,
             sig.append(argDef)
 
         if isConstructor:
-            output.append('def __init__({args}): ...'.format(args=', '.join(sig)))
+            output.append('def __init__({args}):{ellipsis}'.format(
+                args=', '.join(sig),
+                ellipsis='' if overloadJavadoc else ' ...'
+            ))
+            if overloadJavadoc:
+                output.extend(toDocstringLines(overloadJavadoc))
+                output.append('    ...')
         else:
             # In the future, we should prevent keyword arguments from being used (PEP-570) but that requires 3.8+
-            output.append('def {function}({args}) -> {ret}: ...'.format(
+            output.append('def {function}({args}) -> {ret}:{ellipsis}'.format(
                 function=pysafe(signature.name),
                 args=', '.join(sig),
-                ret=toAnnotatedType(signature.retType, parentName, classesDone, classesUsed, importsOutput)
+                ret=toAnnotatedType(signature.retType, parentName, classesDone, classesUsed, importsOutput),
+                ellipsis='' if overloadJavadoc else ' ...'
             ))
+            if overloadJavadoc:
+                output.extend(toDocstringLines(overloadJavadoc))
+                output.append('    ...')
 
 
 def generateJavaFieldStub(parentName: str,
                           jField: Any,
+                          javadoc: Dict[str, str],
                           classesDone: Set[str],
                           classesUsed: Set[str],
                           classTypeVars: List[TypeVarStr],
@@ -830,6 +916,8 @@ def generateJavaFieldStub(parentName: str,
     if static:
         fieldTypeAnnotation = f'typing.ClassVar[{fieldTypeAnnotation}]'
     output.append(f'{pysafe(fieldName)}: {fieldTypeAnnotation} = ...')
+    if fieldName in javadoc:
+        output.extend(toDocstringLines(javadoc[fieldName], indent=False))
 
 
 def pysafePackagePath(packagePath: str) -> str:
@@ -903,6 +991,40 @@ def jpypeCustomizerSuperTypes(jClass: jpype.JClass, classTypeVars: List[TypeVarS
     return extraSuperTypes
 
 
+def sanitizeJavadocHtml(escapedHtml: Optional[str]) -> Optional[str]:
+    """ Un-Escape common html escapes used, and change the non-breaking space (unicode 200B) to ' ' """
+    if escapedHtml is None: return None
+    return escapedHtml \
+        .replace('\u200B', ' ') \
+        .replace('\xa0', ' ') \
+        .replace('&nbsp;', ' ') \
+        .replace('&lt;', '<') \
+        .replace('&gt;', '>')
+
+
+def extractClassJavadoc(jClass: jpype.JClass) -> Javadoc:
+    try:
+        from org.jpype.javadoc import JavadocExtractor # noqa
+        jDoc = JavadocExtractor().getDocumentation(jClass)
+        if jDoc is None:
+            return Javadoc(description='')
+        else:
+            return Javadoc(description=sanitizeJavadocHtml(jDoc.description).strip(),
+                           ctors=sanitizeJavadocHtml(jDoc.ctors),
+                           methods={name: sanitizeJavadocHtml(doc) for name, doc in jDoc.methods.items()},
+                           fields={name: sanitizeJavadocHtml(doc) for name, doc in jDoc.fields.items()})
+    except (jpype.JException, ImportError):
+        return Javadoc(description='')
+
+
+def toDocstringLines(doc: str, indent: bool = True) -> List[str]:
+    if not doc:
+        return []
+    indentStr = '    ' if indent else ''
+    javadocOutput = [indentStr + javadocLine for javadocLine in doc.split('\n')]
+    return [f'{indentStr}"""'] + javadocOutput + [f'{indentStr}"""']
+
+
 def generateJavaClassStub(package: jpype.JPackage,
                           jClass: jpype.JClass,
                           classesDone: Set[str],
@@ -916,6 +1038,7 @@ def generateJavaClassStub(package: jpype.JPackage,
     packageName = package.__name__
     items = sorted(vars(jClass).items(), key=lambda x: x[0])
 
+    javadoc = extractClassJavadoc(jClass)
     writeTypeVarsToOutput = False
     if typeVarOutput is None:
         writeTypeVarsToOutput = True
@@ -930,7 +1053,8 @@ def generateJavaClassStub(package: jpype.JPackage,
 
     constructorsOutput = []  # type: List[str]
     constructors = jClass.class_.getConstructors()
-    generateJavaMethodStub(packageName, '__init__', constructors, classesDone=classesDone, classesUsed=classesUsed,
+    generateJavaMethodStub(packageName, '__init__', constructors, {'__init__': javadoc.ctors},
+                           classesDone=classesDone, classesUsed=classesUsed,
                            classTypeVars=usableTypeVars, output=constructorsOutput, importsOutput=importsOutput)
 
     methodsOutput = []  # type: List[str]
@@ -938,14 +1062,14 @@ def generateJavaClassStub(package: jpype.JPackage,
     for attr, value in items:
         if isinstance(value, jpype.JMethod):
             matchingOverloads = [o for o in jOverloads if str(o.getName()) == attr and not o.isSynthetic()]
-            generateJavaMethodStub(packageName, attr, matchingOverloads, classesDone=classesDone,
+            generateJavaMethodStub(packageName, attr, matchingOverloads, javadoc.methods, classesDone=classesDone,
                                    classesUsed=classesUsed, classTypeVars=usableTypeVars, output=methodsOutput,
                                    importsOutput=importsOutput)
 
     fieldsOutput = []  # type: List[str]
     jFields = jClass.class_.getDeclaredFields()
     for jField in jFields:
-        generateJavaFieldStub(packageName, jField, classesDone=classesDone, classesUsed=classesUsed,
+        generateJavaFieldStub(packageName, jField, javadoc.fields, classesDone=classesDone, classesUsed=classesUsed,
                               classTypeVars=usableTypeVars, output=fieldsOutput, importsOutput=importsOutput)
 
     nestedClassesOutput = []  # type: List[str]
@@ -1006,12 +1130,15 @@ def generateJavaClassStub(package: jpype.JPackage,
         output.append('')
         output += typeVarOutput
 
-    javadocOutput = ['    ' + javadocLine for javadocLine in generate_class_javadoc(jClass).split('\n')]
-    if javadocOutput:
-        javadocOutput = ['    """'] + javadocOutput + ['    """']
+    javadocOutput = toDocstringLines(javadoc.description)
 
     if not constructorsOutput and not methodsOutput and not fieldsOutput and not nestedClassesOutput:
-        output.append(f'class {className}{superTypeStr}: ...')
+        if javadocOutput:
+            output.append(f'class {className}{superTypeStr}:')
+            output.extend(javadocOutput)
+            output.append('    ...')
+        else:
+            output.append(f'class {className}{superTypeStr}: ...')
         # a docstring is not allowed here ...
     else:
         output.append(f'class {className}{superTypeStr}:')
