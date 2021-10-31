@@ -95,6 +95,7 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
                       useStubsSuffix: bool = True,
                       outputDir: Union[str, pathlib.Path] = '.',
                       jpypeJPackageStubs: bool = True,
+                      includeJavadoc: bool = True,
                       ) -> None:
     """
     Main entry point. Recursively generate stubs for the provided packages and all sub-packages.
@@ -132,7 +133,7 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
             initFile = submodulePath / '__init__.pyi'
             initFile.touch()
 
-        generateStubsForJavaPackage(pkg, submodulePath / '__init__.pyi', subpackages[pkg.__name__])
+        generateStubsForJavaPackage(pkg, submodulePath / '__init__.pyi', subpackages[pkg.__name__], includeJavadoc)
 
     if jpypeJPackageStubs:
         tld_packages = {name.split('.')[0] for name in subpackages}
@@ -207,7 +208,8 @@ def provideCustomizerStubs(customizersUsed: Set[Type], importOutput: List[str], 
         importOutput.append(f'from {c.__module__} import {c.__qualname__}')
 
 
-def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpackages: List[str]) -> None:
+def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpackages: List[str],
+                                includeJavadoc=False) -> None:
     """ Generate stubs for a single Java package, represented as a python package with a single __init__ module. """
     pkgName = package.__name__
     javaClasses = sorted(packageClasses(package), key=lambda pkg: pkg.__name__)
@@ -226,7 +228,7 @@ def generateStubsForJavaPackage(package: jpype.JPackage, outputFile: str, subpac
             javaClassesToGenerate = javaClasses  # some inner class cases - will generate them with full names
         for cls in sorted(javaClassesToGenerate, key=lambda c: c.__name__):
             try:
-                generateJavaClassStub(package, cls, classesDone, classesUsed, customizersUsed,
+                generateJavaClassStub(package, cls, includeJavadoc, classesDone, classesUsed, customizersUsed,
                                       output=classOutput, importsOutput=importOutput)
             except jpype.JException as e:  # exception during class loading e.g. missing dependencies (spark...)
                 log.warning(f'Skipping {cls} due to {e}')
@@ -993,13 +995,15 @@ def jpypeCustomizerSuperTypes(jClass: jpype.JClass, classTypeVars: List[TypeVarS
 
 def sanitizeJavadocHtml(escapedHtml: Optional[str]) -> Optional[str]:
     """ Un-Escape common html escapes used, and change the non-breaking space (unicode 200B) to ' ' """
-    if escapedHtml is None: return None
-    return escapedHtml \
-        .replace('\u200B', ' ') \
-        .replace('\xa0', ' ') \
-        .replace('&nbsp;', ' ') \
-        .replace('&lt;', '<') \
-        .replace('&gt;', '>')
+    if escapedHtml is None:
+        return None
+    else:
+        return str(escapedHtml) \
+            .replace('\u200B', ' ') \
+            .replace('\xa0', ' ') \
+            .replace('&nbsp;', ' ') \
+            .replace('&lt;', '<') \
+            .replace('&gt;', '>')
 
 
 def extractClassJavadoc(jClass: jpype.JClass) -> Javadoc:
@@ -1027,6 +1031,7 @@ def toDocstringLines(doc: str, indent: bool = True) -> List[str]:
 
 def generateJavaClassStub(package: jpype.JPackage,
                           jClass: jpype.JClass,
+                          includeJavadoc: bool,
                           classesDone: Set[str],
                           classesUsed: Set[str],
                           customizersUsed: Set[Type],
@@ -1038,7 +1043,11 @@ def generateJavaClassStub(package: jpype.JPackage,
     packageName = package.__name__
     items = sorted(vars(jClass).items(), key=lambda x: x[0])
 
-    javadoc = extractClassJavadoc(jClass)
+    if includeJavadoc:
+        javadoc = extractClassJavadoc(jClass)
+    else:
+        javadoc = Javadoc(description='')
+
     writeTypeVarsToOutput = False
     if typeVarOutput is None:
         writeTypeVarsToOutput = True
@@ -1077,8 +1086,8 @@ def generateJavaClassStub(package: jpype.JPackage,
     for attr, value in items:
         if isJavaClass(value):
             nestedDone = set(classesDone)
-            generateJavaClassStub(package, value, nestedDone, classesUsed, customizersUsed, output=nestedClassesOutput,
-                                  typeVarOutput=typeVarOutput, importsOutput=importsOutput,
+            generateJavaClassStub(package, value, includeJavadoc, nestedDone, classesUsed, customizersUsed,
+                                  output=nestedClassesOutput, typeVarOutput=typeVarOutput, importsOutput=importsOutput,
                                   parentClassTypeVars=usableTypeVars)
             classesDoneNested |= nestedDone
 
@@ -1095,10 +1104,9 @@ def generateJavaClassStub(package: jpype.JPackage,
                 pass
             if cls is not None:
                 nestedDone = set(classesDone)
-                generateJavaClassStub(package, cls, nestedDone, classesUsed, customizersUsed,
-                                      output=nestedClassesOutput,
-                                      typeVarOutput=typeVarOutput, importsOutput=importsOutput,
-                                      parentClassTypeVars=usableTypeVars)
+                generateJavaClassStub(package, cls, includeJavadoc, nestedDone, classesUsed, customizersUsed,
+                                      output=nestedClassesOutput, typeVarOutput=typeVarOutput,
+                                      importsOutput=importsOutput, parentClassTypeVars=usableTypeVars)
                 classesDoneNested |= nestedDone
             else:
                 log.warning(f'reference to missing inner class {nestedClass} - generating empty stub')
