@@ -30,6 +30,8 @@ if __name__ == '__main__':
                         help='do not use PEP-561 "-stubs" suffix for top-level packages')
     parser.add_argument('--no-jpackage-stubs', dest='with_jpackage_stubs', action='store_false', default=True,
                         help='do not create a partial jpype-stubs package for jp.JPackage("<tld>") type interfaces')
+    parser.add_argument('--no-javadoc', dest='with_javadoc', action='store_false', default=True,
+                        help='do not generate docstrings from JavaDoc where available')
 
     args = parser.parse_args()
     classpath = [c for c_in in args.classpath.split(':') for c in glob(c_in)]
@@ -41,6 +43,7 @@ if __name__ == '__main__':
         useStubsSuffix=args.with_stubs_suffix,
         outputDir=args.output_dir,
         jpypeJPackageStubs=args.with_jpackage_stubs,
+        includeJavadoc=args.with_javadoc
     )
     log.info('Generation done.')
     jpype.java.lang.Runtime.getRuntime().halt(0)
