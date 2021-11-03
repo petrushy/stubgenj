@@ -145,14 +145,14 @@ def generateJavaStubs(parentPackages: List[jpype.JPackage],
 
         pkg = packages.get(pkgName)
         if pkg is not None:
-            generateStubsForJavaPackage(pkg, stubfilePath, list(subpackages[pkgName]), includeJavadoc)
+            generateStubsForJavaPackage(pkg, stubfilePath, sorted(subpackages[pkgName]), includeJavadoc)
         else:
             importOutput = []
             classOutput = []
             generateModuleProtocol(
                 pkgName,
                 [],
-                list(subpackages[pkgName]), importOutput, classOutput,
+                sorted(subpackages[pkgName]), importOutput, classOutput,
             )
             output = []
 
