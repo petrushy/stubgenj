@@ -80,6 +80,13 @@ class Javadoc:
 
 
 def isEmptyPseudoPackage(package: jpype.JPackage) -> bool:
+    """
+    Return True if the package is an (empty) "pseudo package" - a package that neither contains classes,
+    nor sub-packages.
+
+    Such packages are not importable in Java. Still, JPype can generate them e.g. for directories that are only present
+    in Javadoc JARs but not in source JARs (e.g. "class-use" in Guava)
+    """
     return len(dir(package)) == 0
 
 
