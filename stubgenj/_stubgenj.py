@@ -79,13 +79,24 @@ class Javadoc:
     fields: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
+def isEmptyPseudoPackage(package: jpype.JPackage) -> bool:
+    """
+    Return True if the package is an (empty) "pseudo package" - a package that neither contains classes,
+    nor sub-packages.
+
+    Such packages are not importable in Java. Still, JPype can generate them e.g. for directories that are only present
+    in Javadoc JARs but not in source JARs (e.g. "class-use" in Guava)
+    """
+    return len(dir(package)) == 0
+
+
 def packageAndSubPackages(package: jpype.JPackage) -> Generator[jpype.JPackage, None, None]:
     """ Walk the java package tree and collect all packages in the JVM which are descendants of the given package. """
     yield package
     for name in dir(package):
         try:
             item = getattr(package, name)
-            if isinstance(item, jpype.JPackage):
+            if isinstance(item, jpype.JPackage) and not isEmptyPseudoPackage(item):
                 yield from packageAndSubPackages(item)
         except Exception as e:
             log.warning(f'skipping {package.__name__}.{name}: {e}')
