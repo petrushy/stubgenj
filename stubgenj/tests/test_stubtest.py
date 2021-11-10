@@ -25,7 +25,7 @@ def provide_jpype_stubs(stub_tmpdir: str):
     jpype_dir = os.path.dirname(jp.__file__)
     jpype_dest = pathlib.Path(stub_tmpdir) / os.path.basename(jpype_dir)
     shutil.copytree(jpype_dir, jpype_dest)
-    (jpype_dest / 'py.typed').touch()
+    (jpype_dest / 'py.typed').write_text('partial\n')
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -48,4 +48,4 @@ def test_generate_stubs(stub_tmpdir):
 
 @pytest.mark.trylast
 class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
-    files = ['arraylist.test', 'hashmap.test', 'enummap.test', 'callbacks.test']
+    files = ['arraylist.test', 'hashmap.test', 'enummap.test', 'callbacks.test', 'jpype_jpackage.test']

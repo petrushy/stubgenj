@@ -1,0 +1,18 @@
+[case testRootJPackage]
+import jpype
+reveal_type(jpype.JPackage("java"))             # N: Revealed type is "java.__module_protocol__"
+
+[case testSubJPackage]
+import jpype
+java = jpype.JPackage("java")
+
+reveal_type(java.util)                          # N: Revealed type is "java.util.__module_protocol__"
+
+[case testJPackageClassCreation]
+import jpype
+import typing
+java = jpype.JPackage("java")
+int_list: typing.List[int] = [42]
+
+reveal_type(java.util.ArrayList(int_list))         # N: Revealed type is "java.util.ArrayList[Any]"
+
