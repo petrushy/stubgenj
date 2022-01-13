@@ -21,7 +21,7 @@ REQUIREMENTS: dict = {
     ],
     'test': [
         'pytest',
-        'mypy',
+        'mypy>=0.931',
     ],
 }
 
