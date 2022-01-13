@@ -16,6 +16,6 @@ from java.util import ArrayList
 pylist = ['test', '1', '2']
 java_array_list = ArrayList(pylist)
 java_array_list.add(42) # E: No overload variant of "add" of "ArrayList" matches argument type "int" \
-                        # N: Possible overload variant: \
+                        # N: Possible overload variants: \
                         # N:     def add(self, e: str) -> bool \
-                        # N:     <1 more non-matching overload not shown>
+                        # N:     def add(self, int: int, e: str) -> None
