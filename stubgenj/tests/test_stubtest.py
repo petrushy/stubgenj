@@ -43,9 +43,20 @@ def setup_mypy_for_data_driven_tests(stub_tmpdir: str):
 
 def test_generate_stubs(stub_tmpdir):
     import java.util  # noqa
-    stubgenj.generateJavaStubs([java.util], useStubsSuffix=True, outputDir=stub_tmpdir)
+    stubgenj.generateJavaStubs(
+        [java.util],
+        useStubsSuffix=True, outputDir=stub_tmpdir,
+    )
 
 
 @pytest.mark.trylast
 class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
-    files = ['arraylist.test', 'hashmap.test', 'enummap.test', 'callbacks.test', 'jpype_jpackage.test', 'varargs.test']
+    files = [
+        'arraylist.test',
+        'callbacks.test',
+        'enummap.test',
+        'forward_declaration.test',
+        'hashmap.test',
+        'jpype_jpackage.test',
+        'varargs.test',
+    ]

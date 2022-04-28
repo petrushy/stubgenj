@@ -15,4 +15,3 @@ java = jpype.JPackage("java")
 int_list: typing.List[int] = [42]
 
 reveal_type(java.util.ArrayList(int_list))         # N: Revealed type is "java.util.ArrayList[Any]"
-
