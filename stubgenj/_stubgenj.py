@@ -60,6 +60,7 @@ class TypeVarStr:
 class ArgSig:
     name: str
     argType: Optional[TypeStr] = None
+    varArgs: bool = False
 
 
 @dataclasses.dataclass(frozen=True)
@@ -695,12 +696,23 @@ def pythonType(javaType: Any, typeVars: Optional[List[TypeVarStr]] = None, isArg
         return pythonType(jBound, typeVars)
     # Java arrays returned by JPype are of type "JArray", but JArray is not generic. To conserve the type information
     # of the elements, we map them to typing.List for the time being.
-    elif isinstance(javaType, GenericArrayType):
-        return TypeStr('typing.List', [pythonType(javaType.getGenericComponentType(), typeVars)])
-    elif javaType.isArray():
-        return TypeStr('typing.List', [pythonType(javaType.getComponentType(), typeVars)])
+    elif isinstance(javaType, GenericArrayType) or javaType.isArray():
+        return TypeStr('typing.List', [pythonType(javaArrayComponentType(javaType), typeVars)])
     else:
         return translateTypeName(str(javaType.getName()), implicitConversions=isArgument)
+
+
+def javaArrayComponentType(javaType: Any) -> Any:
+    """
+    Get the component type of a java array type (parametrized type for generic arrays, otherwise "standard" type)
+    :param javaType: the array type
+    :return: the component type
+    """
+    from java.lang.reflect import GenericArrayType # noqa
+    if isinstance(javaType, GenericArrayType):
+        return javaType.getGenericComponentType()
+    else:
+        return javaType.getComponentType()
 
 
 def pythonTypeVar(javaType: Any, uniqScopeId: str) -> TypeVarStr:
@@ -887,8 +899,11 @@ def generateJavaMethodStub(parentName: str,
         args = [] if static else [ArgSig(name='self')]  # type: List[ArgSig]
         for jArg in jArgs:
             jArgType = jArg.getParameterizedType()
+            if jArg.isVarArgs():
+                jArgType = javaArrayComponentType(jArgType)
             jArgName = str(jArg.getName()) if jArg.isNamePresent() else inferArgName(jArgType, args)
-            args.append(ArgSig(name=jArgName, argType=pythonType(jArgType, usableTypeVars, isArgument=True)))
+            args.append(ArgSig(name=jArgName, argType=pythonType(jArgType, usableTypeVars, isArgument=True),
+                               varArgs=jArg.isVarArgs()))
 
         signatures.append(JavaFunctionSig(name, args=args, retType=pythonType(jReturnType, usableTypeVars),
                                           static=static, typeVars=methodTypeVars))
@@ -914,6 +929,8 @@ def generateJavaMethodStub(parentName: str,
                 argDef = arg.name
             else:
                 argDef = pysafe(arg.name)
+                if arg.varArgs:
+                    argDef = '*' + argDef
 
                 if arg.argType:
                     argDef += ': ' + toAnnotatedType(arg.argType, parentName, classesDone, classesUsed, importsOutput)

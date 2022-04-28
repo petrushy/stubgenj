@@ -5,9 +5,9 @@ pylist = ['test', '1', '2']
 java_array_list = ArrayList(pylist)
 java_array_list.add('42')
 
-reveal_type(java_array_list)        # N: Revealed type is "java.util.ArrayList[builtins.str*]"
-reveal_type(java_array_list.get(0)) # N: Revealed type is "builtins.str*"
-reveal_type(java_array_list[0])     # N: Revealed type is "builtins.str*"
+reveal_type(java_array_list)        # N: Revealed type is "java.util.ArrayList[builtins.str]"
+reveal_type(java_array_list.get(0)) # N: Revealed type is "builtins.str"
+reveal_type(java_array_list[0])     # N: Revealed type is "builtins.str"
 
 
 [case testArrayListInvalid]

@@ -1,0 +1,18 @@
+[case testVarArgsInts]
+from java.util import Arrays
+
+java_list = Arrays.asList(5, 23, 42)  # <- varargs invocation!
+reveal_type(java_list)        # N: Revealed type is "java.util.List[builtins.int]"
+
+[case testVarArgsStrings]
+from java.util import Arrays
+
+java_list = Arrays.asList('test', 'foo')  # <- varargs invocation!
+reveal_type(java_list)        # N: Revealed type is "java.util.List[builtins.str]"
+
+
+[case testVarArgsMixed]
+from java.util import Arrays
+
+java_list = Arrays.asList('life', 'universe', 'everything', 42)  # <- varargs invocation!
+reveal_type(java_list)        # N: Revealed type is "java.util.List[builtins.object]"
