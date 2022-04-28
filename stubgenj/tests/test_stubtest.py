@@ -48,4 +48,4 @@ def test_generate_stubs(stub_tmpdir):
 
 @pytest.mark.trylast
 class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
-    files = ['arraylist.test', 'hashmap.test', 'enummap.test', 'callbacks.test', 'jpype_jpackage.test']
+    files = ['arraylist.test', 'hashmap.test', 'enummap.test', 'callbacks.test', 'jpype_jpackage.test', 'varargs.test']
