@@ -6,23 +6,24 @@ variables:
   project_name: stubgenj
   PY_VERSION: "3.7"
 
-
 .dev_test_base:
+  needs: []  # No need to wait for wheel building to finish for dev testing.
   extends:
     - .acc_py_dev_test
-  image: continuumio/miniconda3
   before_script:
-    - conda create -n dev_env --yes --quiet -c conda-forge python=${PY_VERSION} pip
-    - source activate dev_env
+    - pip install -e .[test] Jpype1${JPYPE_VN} pytest-cov
 
-    - conda install -c conda-forge --yes --quiet Jpype1${JPYPE_VN} openjdk
-
-    - pip install -e .[test]
-    - pip install pytest-cov
-
-dev_tests_jpype_1p2:
+dev_tests_py37_openjdk11_jpype1p2:
   extends:
     - .dev_test_base
+  image: registry.cern.ch/acc/acc-py_cc7_openjdk11_ci:2020.11
+  variables:
+    JPYPE_VN: "==1.2.*"
+
+dev_tests_py39_openjdk11_jpype1p2:
+  extends:
+    - .dev_test_base
+  image: registry.cern.ch/acc/acc-py_cc7_openjdk11_ci:2021.12
   variables:
     JPYPE_VN: "==1.2.*"
 
@@ -30,11 +31,9 @@ dev_tests_jpype_1p2:
 release_sdist:
   extends: .acc_py_release_sdist
 
-
 build_wheel:
   extends:
     - .acc_py_build_wheel
-
 
 release_wheel:
   extends: .acc_py_release_wheel
