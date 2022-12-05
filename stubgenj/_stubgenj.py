@@ -697,7 +697,13 @@ def pythonType(javaType: Any, typeVars: Optional[List[TypeVarStr]] = None, isArg
     # Java arrays returned by JPype are of type "JArray", but JArray is not generic. To conserve the type information
     # of the elements, we map them to typing.List for the time being.
     elif isinstance(javaType, GenericArrayType) or javaType.isArray():
-        return TypeStr('typing.List', [pythonType(javaArrayComponentType(javaType), typeVars)])
+        elementType = javaArrayComponentType(javaType)
+        listType = TypeStr('typing.List', [pythonType(elementType, typeVars)])
+        if isArgument and str(elementType) == 'byte':
+            # hack: JPype supports converting bytes/bytearray to byte[] but this is not advertised in hints...
+            return TypeStr('typing.Union', [listType, TypeStr('bytes'), TypeStr('bytearray')])
+        else:
+            return listType
     else:
         return translateTypeName(str(javaType.getName()), implicitConversions=isArgument)
 
