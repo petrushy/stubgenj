@@ -58,5 +58,6 @@ class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
         'forward_declaration.test',
         'hashmap.test',
         'jpype_jpackage.test',
+        'mangled_python_keywords.test',
         'varargs.test',
     ]

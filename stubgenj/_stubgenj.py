@@ -1129,7 +1129,7 @@ def generateJavaClassStub(package: jpype.JPackage,
     jOverloads = jClass.class_.getMethods()
     for attr, value in items:
         if isinstance(value, jpype.JMethod):
-            matchingOverloads = [o for o in jOverloads if str(o.getName()) == attr and not o.isSynthetic()]
+            matchingOverloads = [o for o in jOverloads if pysafe(str(o.getName())) == attr and not o.isSynthetic()]
             generateJavaMethodStub(packageName, attr, matchingOverloads, javadoc.methods, classesDone=classesDone,
                                    classesUsed=classesUsed, classTypeVars=usableTypeVars, output=methodsOutput,
                                    importsOutput=importsOutput)

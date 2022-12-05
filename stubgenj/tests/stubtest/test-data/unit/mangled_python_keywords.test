@@ -1,0 +1,15 @@
+[case testBitArrayStubIsValid]
+from java.util import BitSet
+
+[case testMangledMethodsAreGenerated]
+from java.util import BitSet
+BitSet(1).and_(BitSet(2))
+BitSet(1).or_(BitSet(2))
+
+[case testNoUnmangledMethodsAreGenerated_and]
+from java.util import BitSet
+BitSet(1).and(BitSet(2))  # E: invalid syntax
+
+[case testNoUnmangledMethodsAreGenerated_or]
+BitSet(1).or(BitSet(2))   # E: invalid syntax
+
