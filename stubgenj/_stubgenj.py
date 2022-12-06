@@ -666,11 +666,9 @@ def translateJavaArrayType(javaType: Any, typeVars: Optional[List[TypeVarStr]], 
     >>> translateJavaArrayType(jpype.JArray(jpype.JByte).class_, [], False)
     TypeStr(name='typing.MutableSequence', typeArgs=[TypeStr(name='int', typeArgs=[])])
     >>> translateJavaArrayType(jpype.JArray(jpype.JByte).class_, [], True)
-    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='int', typeArgs=[])]),
-    TypeStr(name='jpype.JArray', typeArgs=[]), TypeStr(name='bytes', typeArgs=[])])
+    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='int', typeArgs=[])]), TypeStr(name='jpype.JArray', typeArgs=[]), TypeStr(name='bytes', typeArgs=[])])
     >>> translateJavaArrayType(jpype.JArray(jpype.java.util.Date).class_, [], True)
-    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='java.util.Date',
-    typeArgs=None)]), TypeStr(name='jpype.JArray', typeArgs=[])])
+    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='java.util.Date', typeArgs=None)]), TypeStr(name='jpype.JArray', typeArgs=[])])
     >>> translateJavaArrayType(jpype.JArray(jpype.java.util.Date).class_, [], False)
     TypeStr(name='typing.MutableSequence', typeArgs=[TypeStr(name='java.util.Date', typeArgs=None)])
     """
