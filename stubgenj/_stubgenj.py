@@ -701,7 +701,7 @@ def pythonType(javaType: Any, typeVars: Optional[List[TypeVarStr]] = None, isArg
         listType = TypeStr('typing.List', [pythonType(elementType, typeVars)])
         if isArgument and str(elementType) == 'byte':
             # hack: JPype supports converting bytes/bytearray to byte[] but this is not advertised in hints...
-            return TypeStr('typing.Union', [listType, TypeStr('bytes'), TypeStr('bytearray')])
+            return TypeStr('typing.Union', [listType, TypeStr('bytes')])
         else:
             return listType
     else:
