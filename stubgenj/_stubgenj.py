@@ -653,6 +653,53 @@ def translateTypeName(typeName: str, typeArgs: Optional[List[TypeStr]] = None,
     return TypeStr(typeName, typeArgs)
 
 
+def translateJavaArrayType(javaType: Any, typeVars: Optional[List[TypeVarStr]], isArgument: bool) -> TypeStr:
+    """
+    Translate a Java array type to python type.
+
+    Java arrays returned by JPype are of type "JArray", but JArray is not generic. To conserve the type
+    information of the elements, we map them to typing.MutableSequence for the time being.
+
+    For arguments, JPype accepts JArray, and it does implicit conversions for Sequences/Lists for all arrays
+    and bytes -> byte[] specifically (these conversions happen by copy).
+
+    >>> translateJavaArrayType(jpype.JArray(jpype.JByte).class_, [], False)
+    TypeStr(name='typing.MutableSequence', typeArgs=[TypeStr(name='int', typeArgs=[])])
+    >>> translateJavaArrayType(jpype.JArray(jpype.JByte).class_, [], True)
+    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='int', typeArgs=[])]),
+    TypeStr(name='jpype.JArray', typeArgs=[]), TypeStr(name='bytes', typeArgs=[])])
+    >>> translateJavaArrayType(jpype.JArray(jpype.java.util.Date).class_, [], True)
+    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='typing.List', typeArgs=[TypeStr(name='java.util.Date',
+    typeArgs=None)]), TypeStr(name='jpype.JArray', typeArgs=[])])
+    >>> translateJavaArrayType(jpype.JArray(jpype.java.util.Date).class_, [], False)
+    TypeStr(name='typing.MutableSequence', typeArgs=[TypeStr(name='java.util.Date', typeArgs=None)])
+    """
+    elementType = javaArrayComponentType(javaType)
+    pythonElementType = pythonType(elementType, typeVars)
+    if isArgument:
+        union = [TypeStr('typing.List', [pythonElementType]), TypeStr('jpype.JArray')]
+        if str(elementType) == 'byte':
+            # hack: JPype supports converting bytes/bytearray to byte[] but this is not advertised in hints...
+            union.append(TypeStr('bytes'))
+        return TypeStr('typing.Union', union)
+    else:
+        # actually JArray, but it is not generic
+        return TypeStr('typing.MutableSequence', [pythonElementType])
+
+
+def javaArrayComponentType(javaType: Any) -> Any:
+    """
+    Get the component type of a java array type (parametrized type for generic arrays, otherwise "standard" type)
+    :param javaType: the array type
+    :return: the component type
+    """
+    from java.lang.reflect import GenericArrayType # noqa
+    if isinstance(javaType, GenericArrayType):
+        return javaType.getGenericComponentType()
+    else:
+        return javaType.getComponentType()
+
+
 def pythonType(javaType: Any, typeVars: Optional[List[TypeVarStr]] = None, isArgument: bool = False) -> TypeStr:
     """
     Translate a (possibly generic/parametrized) Java type to a python type, represented as a TypeStr.
@@ -694,31 +741,10 @@ def pythonType(javaType: Any, typeVars: Optional[List[TypeVarStr]] = None, isArg
             if jLowerBounds:
                 jBound = jLowerBounds[0]
         return pythonType(jBound, typeVars)
-    # Java arrays returned by JPype are of type "JArray", but JArray is not generic. To conserve the type information
-    # of the elements, we map them to typing.List for the time being.
     elif isinstance(javaType, GenericArrayType) or javaType.isArray():
-        elementType = javaArrayComponentType(javaType)
-        listType = TypeStr('typing.List', [pythonType(elementType, typeVars)])
-        if isArgument and str(elementType) == 'byte':
-            # hack: JPype supports converting bytes/bytearray to byte[] but this is not advertised in hints...
-            return TypeStr('typing.Union', [listType, TypeStr('bytes')])
-        else:
-            return listType
+        return translateJavaArrayType(javaType, typeVars, isArgument=isArgument)
     else:
         return translateTypeName(str(javaType.getName()), implicitConversions=isArgument)
-
-
-def javaArrayComponentType(javaType: Any) -> Any:
-    """
-    Get the component type of a java array type (parametrized type for generic arrays, otherwise "standard" type)
-    :param javaType: the array type
-    :return: the component type
-    """
-    from java.lang.reflect import GenericArrayType # noqa
-    if isinstance(javaType, GenericArrayType):
-        return javaType.getGenericComponentType()
-    else:
-        return javaType.getComponentType()
 
 
 def pythonTypeVar(javaType: Any, uniqScopeId: str) -> TypeVarStr:
