@@ -80,7 +80,7 @@ class Javadoc:
     fields: Dict[str, str] = dataclasses.field(default_factory=dict)
 
 
-def isEmptyPseudoPackage(package: jpype.JPackage) -> bool:
+def isPseudoPackage(package: jpype.JPackage) -> bool:
     """
     Return True if the package is an (empty) "pseudo package" - a package that neither contains classes,
     nor sub-packages.
@@ -88,7 +88,7 @@ def isEmptyPseudoPackage(package: jpype.JPackage) -> bool:
     Such packages are not importable in Java. Still, JPype can generate them e.g. for directories that are only present
     in Javadoc JARs but not in source JARs (e.g. "class-use" in Guava)
     """
-    return len(dir(package)) == 0
+    return len(dir(package)) == 0 or '$' in package.__name__
 
 
 def packageAndSubPackages(package: jpype.JPackage) -> Generator[jpype.JPackage, None, None]:
@@ -97,7 +97,7 @@ def packageAndSubPackages(package: jpype.JPackage) -> Generator[jpype.JPackage, 
     for name in dir(package):
         try:
             item = getattr(package, name)
-            if isinstance(item, jpype.JPackage) and not isEmptyPseudoPackage(item):
+            if isinstance(item, jpype.JPackage) and not isPseudoPackage(item):
                 yield from packageAndSubPackages(item)
         except Exception as e:
             log.warning(f'skipping {package.__name__}.{name}: {e}')
@@ -954,11 +954,13 @@ def generateJavaMethodStub(parentName: str,
         if signature.static:
             output.append('@staticmethod')
         sig = []
-        for arg in signature.args:
+        for i, arg in enumerate(signature.args):
             if arg.name == 'self':
                 argDef = arg.name
             else:
                 argDef = pysafe(arg.name)
+                if argDef is None:
+                    argDef = f'invalidArgName{i}'
                 if arg.varArgs:
                     argDef = '*' + argDef
 
@@ -976,9 +978,12 @@ def generateJavaMethodStub(parentName: str,
                 output.extend(toDocstringLines(overloadJavadoc))
                 output.append('    ...')
         else:
+            functionName = pysafe(signature.name)
+            if functionName is None:
+                continue
             # In the future, we should prevent keyword arguments from being used (PEP-570) but that requires 3.8+
             output.append('def {function}({args}) -> {ret}:{ellipsis}'.format(
-                function=pysafe(signature.name),
+                function=functionName,
                 args=', '.join(sig),
                 ret=toAnnotatedType(signature.retType, parentName, classesDone, classesUsed, importsOutput),
                 ellipsis='' if overloadJavadoc else ' ...'
@@ -1006,7 +1011,10 @@ def generateJavaFieldStub(parentName: str,
                                           canBeDeferred=True)
     if static:
         fieldTypeAnnotation = f'typing.ClassVar[{fieldTypeAnnotation}]'
-    output.append(f'{pysafe(fieldName)}: {fieldTypeAnnotation} = ...')
+    pySafeFieldName = pysafe(fieldName)
+    if pySafeFieldName is None:
+        return
+    output.append(f'{pySafeFieldName}: {fieldTypeAnnotation} = ...')
     if fieldName in javadoc:
         output.extend(toDocstringLines(javadoc[fieldName], indent=False))
 
