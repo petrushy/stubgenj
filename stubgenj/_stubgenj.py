@@ -31,6 +31,7 @@ import dataclasses
 import functools
 import pathlib
 import re
+import textwrap
 from typing import Dict, List, Optional, Any, Set, Type, Union, Generator
 
 import jpype
@@ -197,12 +198,24 @@ def generateJPypeJPackageOverloadStubs(outputPath: pathlib.Path, topLevelPackage
 
     imports = []
     overloads = []
+
+    if topLevelPackages:
+        imports.append(textwrap.dedent(
+            """
+            import sys
+            if sys.version_info >= (3, 8):
+                from typing import Literal
+            else:
+                from typing_extensions import Literal
+            """,
+        ))
+
     for name in topLevelPackages:
         imports.append(f"import {name}")
         overloads.extend([
             '',
             '@typing.overload',
-            f'def JPackage(__package_name: typing.Literal[\'{name}\']) -> {name}.__module_protocol__: ...\n',
+            f'def JPackage(__package_name: Literal[\'{name}\']) -> {name}.__module_protocol__: ...\n',
         ])
 
     with jpypeStubsPath.open('wt') as fh:
@@ -348,9 +361,18 @@ def generateModuleProtocol(
     """ Mutate the given import and class output to include a __module_protocol__ typing.Protocol """
 
     importOutput.append('import typing')
+    importOutput.append(textwrap.dedent(
+        """
+        import sys
+        if sys.version_info >= (3, 8):
+            from typing import Protocol
+        else:
+            from typing_extensions import Protocol
+        """,
+    ))
 
     protocolOutput = [
-        'class __module_protocol__(typing.Protocol):',
+        'class __module_protocol__(Protocol):',
         f'    # A module protocol which reflects the result of ``jp.JPackage("{pkgName}")``.',
         '',
     ]

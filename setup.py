@@ -22,6 +22,7 @@ REQUIREMENTS: dict = {
     'test': [
         'pytest',
         'mypy>=0.931,<0.971',
+        "typing_extensions;python_version<'3.8'",  # Required for java-stubs
     ],
 }
 
