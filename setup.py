@@ -17,11 +17,12 @@ with (HERE / 'README.md').open('rt') as fh:
 REQUIREMENTS: dict = {
     'core': [
         'dataclasses;python_version<"3.7"',
-        'JPype1>=1.2.1,<2.*',
+        'JPype1>=1.2.1,<2.0.dev0',
     ],
     'test': [
         'pytest',
         'mypy>=0.931,<0.971',
+        "typing_extensions;python_version<'3.8'",  # Required for java-stubs
     ],
 }
 
