@@ -224,6 +224,8 @@ def generateJPypeJPackageOverloadStubs(outputPath: pathlib.Path, topLevelPackage
             'import typing\n\n',
             '\n'.join(imports) + '\n\n',
             '\n'.join(overloads) + '\n\n',
+            '@typing.overload\n',
+            'def JPackage(__package_name: str) -> types.ModuleType: ...\n\n\n',
             'def JPackage(__package_name) -> types.ModuleType: ...\n\n',
         ])
 
