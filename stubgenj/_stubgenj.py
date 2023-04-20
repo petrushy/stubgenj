@@ -1111,11 +1111,11 @@ def jpypeCustomizerSuperTypes(jClass: jpype.JClass, classTypeVars: List[TypeVarS
             typeStr += '[' + ', '.join([tv.pythonName for tv in classTypeVars]) + ']'
         extraSuperTypes.append(typeStr)
         customizersUsed.add(customizer)
-    if jClass.class_.getName() == 'java.lang.Throwable' and 'jpype.JException' not in extraSuperTypes:
+    if jClass.class_.getName() == 'java.lang.Throwable' and 'JException' not in extraSuperTypes:
         # Workaround to allow Throwable-derived exception types be recognized
         # as JException, so that they can be assigned as Exception.__cause__
-        extraSuperTypes.append('jpype.JException')
-        customizersUsed.add(jpype.JException)
+        extraSuperTypes.append('JException')
+        customizersUsed.add(jpype.JException) # noqa
     return extraSuperTypes
 
 

@@ -1,0 +1,7 @@
+[case testJavaException]
+from java.lang import Exception
+java_exception = Exception("Testing")
+
+reveal_type(java_exception)        # N: Revealed type is "java.lang.Exception"
+
+raise RuntimeError("42") from java_exception

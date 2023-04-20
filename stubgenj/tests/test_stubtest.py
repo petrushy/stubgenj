@@ -43,8 +43,9 @@ def setup_mypy_for_data_driven_tests(stub_tmpdir: str):
 
 def test_generate_stubs(stub_tmpdir):
     import java.util  # noqa
+    import java.lang  # noqa
     stubgenj.generateJavaStubs(
-        [java.util],
+        [java.util, java.lang],
         useStubsSuffix=True, outputDir=stub_tmpdir,
     )
 
@@ -60,4 +61,5 @@ class StubTestSuite(mypy.test.testcheck.TypeCheckSuite):
         'jpype_jpackage.test',
         'mangled_python_keywords.test',
         'varargs.test',
+        'exception.test',
     ]
