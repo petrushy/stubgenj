@@ -39,6 +39,8 @@ optional arguments:
                         convertStrings flag for details
   --no-stubs-suffix     do not use PEP-561 "-stubs" suffix for top-level
                         packages
+  --no-javadoc          do not generate docstrings from JavaDoc where 
+                        available
 ```
 
 
