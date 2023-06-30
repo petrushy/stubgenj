@@ -641,7 +641,7 @@ def translateTypeName(typeName: str, typeArgs: Optional[List[TypeStr]] = None,
     >>> translateTypeName('java.util.Collection', [TypeStr('str')])
     TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='str', typeArgs=[])])
     >>> translateTypeName('java.util.Collection', [TypeStr('str')], implicitConversions=True)
-    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='str', typeArgs=[])]), TypeStr(name='typing.Sequence', typeArgs=[TypeStr(name='str', typeArgs=[])]), TypeStr(name='typing.Set', typeArgs=[TypeStr(name='str', typeArgs=[])])])
+    TypeStr(name='typing.Union', typeArgs=[TypeStr(name='java.util.Collection', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[])]), TypeStr(name='typing.Sequence', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[])]), TypeStr(name='typing.Set', typeArgs=[TypeStr(name='java.lang.String', typeArgs=[])])])
     >>> translateTypeName('java.lang.Object')
     TypeStr(name='typing.Any', typeArgs=[])
     >>> translateTypeName('java.lang.Class', [TypeStr('java.util.List')])
