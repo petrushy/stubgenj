@@ -1271,14 +1271,29 @@ def sanitizeJavadocRst(doc: Optional[str]) -> Optional[str]:
     if not doc:
         return doc
 
+    # Simplify Sphinx cross-reference roles FIRST so the declaration-line detector
+    # sees plain identifiers rather than ``:class:`~pkg.ClassName``` markup.
+    # Interface method declarations use Sphinx refs for the return type, e.g.:
+    #   ``:class:`~org.hipparchus.analysis.BivariateFunction`\xa0interpolate\u200b(...)``
+    # which after simplification becomes ``BivariateFunction interpolate (...)``
+    doc = _SPHINX_ROLE_RE.sub(_simplify_sphinx_ref, doc)
+
     # Remove the leading Java declaration line.
-    # It is always the first non-empty line and contains the keyword ``public``.
-    # It is followed by a blank line before the actual description text.
+    # It is always the first non-empty line, followed by a blank line before the
+    # actual description text.  For concrete classes/methods it starts with ``public``;
+    # for interface methods the modifier is omitted and the line starts directly with
+    # the return type (e.g. ``BivariateFunction interpolate (double[] xval, ...)``).
+    # Detect it by: a Java modifier keyword present, OR the line contains an opening
+    # parenthesis that follows two identifiers (return type + method name pattern).
+    _JAVA_DECL_RE = re.compile(
+        r'\b(public|private|protected|abstract|static|default|synchronized|final|native)\s'
+        r'|\w[\w$.<>\[\]]*\s+\w[\w$]*\s*\('
+    )
     lines = doc.split('\n')
     i = 0
     while i < len(lines) and not lines[i].strip():
         i += 1
-    if i < len(lines) and 'public ' in lines[i]:
+    if i < len(lines) and _JAVA_DECL_RE.search(lines[i]):
         # Skip that declaration line and any immediately following blank lines
         i += 1
         while i < len(lines) and not lines[i].strip():
@@ -1286,8 +1301,13 @@ def sanitizeJavadocRst(doc: Optional[str]) -> Optional[str]:
         lines = lines[i:]
         doc = '\n'.join(lines)
 
-    # Simplify all Sphinx cross-reference roles to bare names
-    doc = _SPHINX_ROLE_RE.sub(_simplify_sphinx_ref, doc)
+    # Normalize paragraph indentation.
+    # JPype's JavadocExtractor indents continuation paragraphs with 4 extra spaces
+    # relative to the first paragraph.  toDocstringLines() then adds another 4,
+    # causing subsequent paragraphs to sit at 8 spaces — which IDEs render as a
+    # literal/code block.  Strip the leading 4 spaces from every line so that all
+    # prose paragraphs end up at the same level after toDocstringLines adds its indent.
+    doc = re.sub(r'^    ', '', doc, flags=re.MULTILINE)
 
     # Remove RST code-block directives; keep the indented code content as a plain block
     doc = re.sub(r'[ \t]*\.\. code-block:.*\n', '', doc)
