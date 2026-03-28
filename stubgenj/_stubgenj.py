@@ -1180,6 +1180,54 @@ def _simplify_sphinx_ref(match: re.Match) -> str:
     return name
 
 
+# Field-section header names — blocks starting with these should not be re-flowed.
+_RST_FIELD_HEADERS = frozenset([
+    'parameters', 'returns', 'raises', 'also see', 'see also',
+    'note', 'notes', 'warning', 'warnings', 'overloads', 'overloaded by',
+    'since', 'version', 'deprecated', 'attributes', 'example', 'examples',
+])
+
+
+def _reflow_rst_prose(doc: str) -> str:
+    """Re-join soft-wrapped lines in prose paragraphs.
+
+    After Sphinx ref simplification, originally long ref tokens become short names, leaving
+    jagged mid-sentence line breaks.  Split on blank lines; within each block that is *not*
+    a structured section (field list, RST directive, list items), join all lines with a space.
+    """
+    blocks = doc.split('\n\n')
+    reflowed = []
+    for block in blocks:
+        lines = block.split('\n')
+        first_nonempty = next((line for line in lines if line.strip()), None)
+        if first_nonempty is None:
+            reflowed.append(block)
+            continue
+
+        stripped_first = first_nonempty.strip().lower().rstrip(':')
+        indent = len(first_nonempty) - len(first_nonempty.lstrip())
+
+        # Leave structured sections, RST directives, list items, and code-like blocks as-is.
+        # Code-like blocks are detected by the presence of Java/C-style syntax: line-ending
+        # semicolons, C++ comments, or braces — left behind after ``.. code-block:`` removal.
+        _has_code = any(
+            re.search(r';\s*$|^\s*//|^\s*[{}]', line)
+            for line in lines if line.strip()
+        )
+        if (stripped_first in _RST_FIELD_HEADERS
+                or first_nonempty.lstrip().startswith('.. ')
+                or any(re.match(r'\s*[-*]\s', line) for line in lines if line.strip())
+                or _has_code):
+            reflowed.append(block)
+            continue
+
+        # Re-flow: join non-empty lines, restore leading indent from first line
+        content = ' '.join(line.strip() for line in lines if line.strip())
+        reflowed.append(' ' * indent + content)
+
+    return '\n\n'.join(reflowed)
+
+
 _PARAM_NAME_RE = re.compile(r'^(\s+)(\w+)\s+\(')
 
 
@@ -1259,6 +1307,10 @@ def sanitizeJavadocRst(doc: Optional[str]) -> Optional[str]:
     # Clean up punctuation left by dropped empty references, e.g. ", , ," → ","
     doc = re.sub(r'(,\s*){2,}', ', ', doc)
     doc = re.sub(r',\s*([,.])', r'\1', doc)
+
+    # Re-flow prose paragraphs: Sphinx refs were long and caused word-wrap line breaks;
+    # after simplification those line breaks leave jagged mid-sentence breaks.
+    doc = _reflow_rst_prose(doc)
 
     return doc
 
