@@ -33,6 +33,10 @@ Applied **after** `splitMethodOverloadJavadoc` for methods/constructors, and dir
 
 1. **Strips the leading Java declaration line** — the first non-empty line containing `public ` (e.g. `public class Foo extends Bar`) is redundant given the Python class signature and is removed.
 2. **Simplifies Sphinx cross-references** — `` :class:`~org.orekit.time.UTCScale` `` → `UTCScale`, `` :meth:`~pkg.Class.method` `` → `method`, broken Oracle javadoc URL refs → cleaned up.
+3. **Removes `.. code-block:` directives** — RST code-block directives are stripped; indented code content is left as plain indented text.
+4. **Strips RST emphasis markers** — `**bold**` → `bold`, `*italic*` → `italic`.
+5. **Drops empty `Also see:` sections** — after reference simplification, sections with blank bodies are removed.
+6. **Strips camelCase Java return variable prefixes** — Javadoc `@return` can emit `variableName description` (e.g. `referenceFrame reference frame from...`); the leading lowerCamelCase identifier is stripped from the first line of `Returns:` sections.
 
 ### Critical ordering constraint for methods
 

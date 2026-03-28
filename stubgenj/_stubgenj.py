@@ -968,8 +968,13 @@ def generateJavaMethodStub(parentName: str,
             output.append(toTypeVarDeclaration(typeVar, parentName, classesDone, classesUsed, importsOutput))
 
     if javadoc.get(name):
-        overloadsJavadoc = [sanitizeJavadocRst(doc) or ''
-                            for doc in splitMethodOverloadJavadoc(signatures, javadoc[name])]
+        if len(signatures) == 1:
+            # Skip splitting for single-overload methods: the regex may fail to match for
+            # abstract/synchronized/complex-generic signatures, silently dropping the javadoc.
+            overloadsJavadoc = [sanitizeJavadocRst(javadoc[name]) or '']
+        else:
+            overloadsJavadoc = [sanitizeJavadocRst(doc) or ''
+                                for doc in splitMethodOverloadJavadoc(signatures, javadoc[name])]
     else:
         overloadsJavadoc = ['' for _ in signatures]
 
@@ -1235,6 +1240,21 @@ def sanitizeJavadocRst(doc: Optional[str]) -> Optional[str]:
 
     # Simplify all Sphinx cross-reference roles to bare names
     doc = _SPHINX_ROLE_RE.sub(_simplify_sphinx_ref, doc)
+
+    # Remove RST code-block directives; keep the indented code content as a plain block
+    doc = re.sub(r'[ \t]*\.\. code-block:.*\n', '', doc)
+
+    # Strip RST bold (**text**) and italic (*text*) emphasis markers
+    doc = re.sub(r'\*\*([^*]+)\*\*', r'\1', doc)
+    doc = re.sub(r'\*([^*\s][^*]*[^*\s]|\S)\*', r'\1', doc)
+
+    # Strip camelCase Java return variable names that prefix Returns: content.
+    # Javadoc @return sometimes emits "variableName description" (e.g. "referenceFrame reference frame from...").
+    # Match a lowerCamelCase word (has at least one uppercase letter) at the start of the Returns body line.
+    doc = re.sub(r'(Returns:\n\s+)([a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*) ', r'\1', doc)
+
+    # Remove "Also see:" / "See Also:" sections whose body became empty after reference cleanup
+    doc = re.sub(r'(Also see|See Also):\s*\n(\s*\n)+', '', doc)
 
     # Clean up punctuation left by dropped empty references, e.g. ", , ," → ","
     doc = re.sub(r'(,\s*){2,}', ', ', doc)
