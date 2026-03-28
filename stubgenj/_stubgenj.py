@@ -968,23 +968,34 @@ def generateJavaMethodStub(parentName: str,
             output.append(toTypeVarDeclaration(typeVar, parentName, classesDone, classesUsed, importsOutput))
 
     if javadoc.get(name):
-        overloadsJavadoc = splitMethodOverloadJavadoc(signatures, javadoc[name])
+        overloadsJavadoc = [sanitizeJavadocRst(doc) or ''
+                            for doc in splitMethodOverloadJavadoc(signatures, javadoc[name])]
     else:
         overloadsJavadoc = ['' for _ in signatures]
 
-    for signature, overloadJavadoc in zip(signatures, overloadsJavadoc):
+    overloadsParamNames = [extractParamNamesFromJavadoc(doc) for doc in overloadsJavadoc]
+
+    for signature, overloadJavadoc, javadocParamNames in zip(signatures, overloadsJavadoc, overloadsParamNames):
         if isOverloaded:
             output.append('@typing.overload')
         if signature.static:
             output.append('@staticmethod')
+        non_self_args = [arg for arg in signature.args if arg.name != 'self']
+        use_javadoc_names = len(javadocParamNames) == len(non_self_args)
         sig = []
+        non_self_idx = 0
         for i, arg in enumerate(signature.args):
             if arg.name == 'self':
                 argDef = arg.name
             else:
-                argDef = pysafe(arg.name)
-                if argDef is None:
-                    argDef = f'invalidArgName{i}'
+                if use_javadoc_names:
+                    argName = pysafe(javadocParamNames[non_self_idx]) or f'invalidArgName{i}'
+                else:
+                    argName = pysafe(arg.name)
+                    if argName is None:
+                        argName = f'invalidArgName{i}'
+                argDef = argName
+                non_self_idx += 1
                 if arg.varArgs:
                     argDef = '*' + argDef
 
@@ -1132,6 +1143,106 @@ def sanitizeJavadocHtml(escapedHtml: Optional[str]) -> Optional[str]:
             .replace('&gt;', '>')
 
 
+# Matches any Sphinx inline cross-reference role: :role:`target`
+_SPHINX_ROLE_RE = re.compile(r':(class|meth|func|attr|mod|obj|code|data|const|type|exc|ref):`([^`]*)`')
+
+
+def _simplify_sphinx_ref(match: re.Match) -> str:
+    """Reduce a Sphinx cross-reference to the bare simple name, for use in plain Python docstrings."""
+    role = match.group(1)
+    target = match.group(2).lstrip('~')
+
+    # Drop URL-encoded references such as %3Cinit%3E (the Java <init> constructor)
+    if '%' in target:
+        return ''
+
+    # Strip URL query strings and HTML anchors, and trailing .html
+    target = re.sub(r'[?#].*$', '', target)
+    target = re.sub(r'\.html?$', '', target)
+
+    # Take only the last dotted component as the simple name,
+    # filtering out URL scheme markers (e.g. 'https:'), pure digits,
+    # and common URL path noise segments from Oracle javadoc links.
+    _URL_NOISE = frozenset({'docs', 'api', 'oracle', 'com', 'javase', 'javax', 'is'})
+    parts = [p for p in target.split('.') if p and not p.endswith(':') and p not in _URL_NOISE and not p.isdigit()]
+
+    if not parts:
+        return ''
+
+    name = parts[-1]
+    if role == 'code':
+        return name
+    return name
+
+
+_PARAM_NAME_RE = re.compile(r'^(\s+)(\w+)\s+\(')
+
+
+def extractParamNamesFromJavadoc(javadoc: str) -> List[str]:
+    """Extract ordered parameter names from the Parameters section of a sanitized javadoc string.
+
+    Matches lines of the form ``    name (Type): description`` that appear directly under a
+    ``Parameters:`` heading, and returns the names in declaration order.
+    """
+    names = []
+    in_params = False
+    param_indent: Optional[int] = None
+    for line in javadoc.split('\n'):
+        if re.search(r'\bParameters:\s*$', line):
+            in_params = True
+            param_indent = None
+        elif in_params:
+            m = _PARAM_NAME_RE.match(line)
+            if m:
+                indent = len(m.group(1))
+                if param_indent is None:
+                    param_indent = indent
+                if indent == param_indent:
+                    names.append(m.group(2))
+            elif line.strip() and param_indent is not None:
+                # A non-empty line at or before the parameter indentation signals a new section
+                if (len(line) - len(line.lstrip())) <= param_indent:
+                    in_params = False
+    return names
+
+
+def sanitizeJavadocRst(doc: Optional[str]) -> Optional[str]:
+    """Strip the leading Java declaration line and simplify Sphinx RST markup for plain Python docstrings.
+
+    The JavadocExtractor produces RST text that contains:
+    - A first line with the full Java declaration (e.g. ``public class Foo extends Bar``),
+      which is redundant given the Python class signature and is too verbose for IDEs.
+    - Sphinx cross-reference roles (e.g. ``:class:`~org.orekit.time.UTCScale```) that should
+      be reduced to the simple class/method name (e.g. ``UTCScale``).
+    """
+    if not doc:
+        return doc
+
+    # Remove the leading Java declaration line.
+    # It is always the first non-empty line and contains the keyword ``public``.
+    # It is followed by a blank line before the actual description text.
+    lines = doc.split('\n')
+    i = 0
+    while i < len(lines) and not lines[i].strip():
+        i += 1
+    if i < len(lines) and 'public ' in lines[i]:
+        # Skip that declaration line and any immediately following blank lines
+        i += 1
+        while i < len(lines) and not lines[i].strip():
+            i += 1
+        lines = lines[i:]
+        doc = '\n'.join(lines)
+
+    # Simplify all Sphinx cross-reference roles to bare names
+    doc = _SPHINX_ROLE_RE.sub(_simplify_sphinx_ref, doc)
+
+    # Clean up punctuation left by dropped empty references, e.g. ", , ," → ","
+    doc = re.sub(r'(,\s*){2,}', ', ', doc)
+    doc = re.sub(r',\s*([,.])', r'\1', doc)
+
+    return doc
+
+
 def extractClassJavadoc(jClass: jpype.JClass) -> Javadoc:
     try:
         from org.jpype.javadoc import JavadocExtractor # noqa
@@ -1139,10 +1250,15 @@ def extractClassJavadoc(jClass: jpype.JClass) -> Javadoc:
         if jDoc is None:
             return Javadoc(description='')
         else:
-            return Javadoc(description=sanitizeJavadocHtml(jDoc.description).strip(),
-                           ctors=sanitizeJavadocHtml(jDoc.ctors),
-                           methods={name: sanitizeJavadocHtml(doc) for name, doc in jDoc.methods.items()},
-                           fields={name: sanitizeJavadocHtml(doc) for name, doc in jDoc.fields.items()})
+            def clean(s: Optional[str]) -> str:
+                return sanitizeJavadocRst(sanitizeJavadocHtml(s)) or ''
+            def cleanRaw(s: Optional[str]) -> str:
+                # Methods and ctors: only HTML sanitization — RST is cleaned after overload splitting
+                return sanitizeJavadocHtml(s) or ''
+            return Javadoc(description=clean(jDoc.description).strip(),
+                           ctors=cleanRaw(jDoc.ctors),
+                           methods={name: cleanRaw(doc) for name, doc in jDoc.methods.items()},
+                           fields={name: clean(doc) for name, doc in jDoc.fields.items()})
     except (jpype.JException, ImportError):
         return Javadoc(description='')
 
