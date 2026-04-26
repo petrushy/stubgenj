@@ -930,6 +930,136 @@ def splitMethodOverloadJavadoc(signatures: List[JavaFunctionSig], javadoc: str) 
     return ['\n'.join(lines) for lines in outLines]
 
 
+def _parse_java_param_names(declaration_line: str) -> List[str]:
+    """Parse parameter names from a Java method/constructor declaration line.
+
+    Given ``public CircularOrbit(double a, double ex, PositionAngleType type)``,
+    returns ``['a', 'ex', 'type']``.  Returns an empty list if no parameter
+    list is found or the line cannot be parsed.
+    """
+    paren_open = declaration_line.find('(')
+    if paren_open == -1:
+        return []
+    # Walk forward to find the matching ')'; track nested brackets so that
+    # generic types like List<Pair<A,B>> don't confuse the comma splitting.
+    depth = 0
+    paren_close = -1
+    for idx, ch in enumerate(declaration_line[paren_open:], paren_open):
+        if ch == '(':
+            depth += 1
+        elif ch == ')':
+            depth -= 1
+            if depth == 0:
+                paren_close = idx
+                break
+    if paren_close == -1:
+        return []
+    params_str = declaration_line[paren_open + 1:paren_close].strip()
+    if not params_str:
+        return []
+    # Split on ',' at bracket-depth 0 (handles generics and nested parens)
+    segments: List[str] = []
+    current: List[str] = []
+    depth = 0
+    for ch in params_str:
+        if ch in '<([':
+            depth += 1
+            current.append(ch)
+        elif ch in '>)]':
+            depth -= 1
+            current.append(ch)
+        elif ch == ',' and depth == 0:
+            segments.append(''.join(current).strip())
+            current = []
+        else:
+            current.append(ch)
+    if current:
+        segments.append(''.join(current).strip())
+    # Each segment is "TYPE name" or "TYPE... name" (varargs).
+    # The parameter name is the last \w+ identifier in the segment.
+    # Only extract a name when there is a type prefix before it; if the segment
+    # is just a bare type (e.g. "double" with no following name, as seen in
+    # abstract/interface javadoc), we cannot tell the name and skip the segment.
+    names = []
+    for seg in segments:
+        seg = seg.replace('...', '').strip()  # remove varargs marker
+        m = re.search(r'\b(\w+)\s*$', seg)
+        if m and seg[:m.start()].strip():
+            names.append(m.group(1))
+    return names
+
+
+# Matches any Sphinx inline cross-reference role: :role:`target`
+# Defined here (rather than alongside sanitizeJavadocRst) so it can be used
+# by extractDeclarationParamNames before RST sanitization has been applied.
+_SPHINX_ROLE_RE = re.compile(r':(class|meth|func|attr|mod|obj|code|data|const|type|exc|ref):`([^`]*)`')
+
+
+def _simplify_sphinx_ref(match: re.Match) -> str:
+    """Reduce a Sphinx cross-reference to the bare simple name."""
+    target = match.group(2).lstrip('~')
+    if '%' in target:
+        return ''
+    target = re.sub(r'[?#].*$', '', target)
+    target = re.sub(r'\.html?$', '', target)
+    _URL_NOISE = frozenset({'docs', 'api', 'oracle', 'com', 'javase', 'javax', 'is'})
+    parts = [p for p in target.split('.') if p and not p.endswith(':') and p not in _URL_NOISE and not p.isdigit()]
+    if not parts:
+        return ''
+    return parts[-1]
+
+
+# Matches lines that look like Java method/constructor declaration headers.
+_JAVA_DECL_LINE_RE = re.compile(
+    r'\b(?:public|protected|private|static|abstract|default|synchronized|final|native)\b'
+    r'|\w[\w$.<>\[\]]*\s+\w[\w$]*\s*\('
+)
+
+
+def extractDeclarationParamNames(signatures: List[JavaFunctionSig], raw_javadoc: str) -> List[List[str]]:
+    """Extract parameter names from Java declaration lines embedded in *raw_javadoc*.
+
+    Scans each line for a Java declaration header, parses its parameter list
+    with :func:`_parse_java_param_names`, and maps the result to *signatures*
+    by matching the non-self argument count.  When two declarations share the
+    same count the match is ambiguous and both are discarded.
+
+    Returns a list parallel to *signatures*; entries are ``[]`` when no
+    unambiguous declaration was found for that overload.
+    """
+    # Strip Sphinx roles before scanning: interface-method return types are often
+    # represented as ':class:`~pkg.Name`' in the RST output, which prevents
+    # _JAVA_DECL_LINE_RE from matching the declaration line.
+    javadoc_text = _SPHINX_ROLE_RE.sub(_simplify_sphinx_ref, raw_javadoc)
+
+    # Map param_count -> names, or None when count is ambiguous with differing names.
+    # Two overloads with the same arity but the same parameter names (e.g.
+    # shiftedBy(double dt) / shiftedBy(TimeOffset dt)) are not truly ambiguous.
+    seen: Dict[int, Optional[List[str]]] = {}
+    for line in javadoc_text.split('\n'):
+        # Declaration headers are always at column 0; indented lines are prose/params.
+        if not line or line[0].isspace():
+            continue
+        if not _JAVA_DECL_LINE_RE.search(line):
+            continue
+        names = _parse_java_param_names(line)
+        if not names:
+            continue
+        count = len(names)
+        if count in seen:
+            if seen[count] != names:
+                seen[count] = None  # truly ambiguous — same arity, different names
+        else:
+            seen[count] = names
+
+    result = []
+    for signature in signatures:
+        n = sum(1 for arg in signature.args if arg.name != 'self')
+        entry = seen.get(n)
+        result.append(entry if entry is not None else [])
+    return result
+
+
 def generateJavaMethodStub(parentName: str,
                            name: str,
                            jOverloads: List[Any],
@@ -980,13 +1110,33 @@ def generateJavaMethodStub(parentName: str,
 
     overloadsParamNames = [extractParamNamesFromJavadoc(doc) for doc in overloadsJavadoc]
 
-    for signature, overloadJavadoc, javadocParamNames in zip(signatures, overloadsJavadoc, overloadsParamNames):
+    # Extract names from Java declaration lines in the raw (pre-RST-sanitization) javadoc.
+    # This succeeds even when splitMethodOverloadJavadoc fails to assign docs to an overload,
+    # which is common for constructors/methods with many primitive parameters whose declaration
+    # line is too long for the overload-split regex to match reliably.
+    raw_javadoc_str = javadoc.get(name, '')
+    overloadsDeclParamNames = (
+        extractDeclarationParamNames(signatures, raw_javadoc_str)
+        if raw_javadoc_str else [[] for _ in signatures]
+    )
+
+    for signature, overloadJavadoc, javadocParamNames, declParamNames in zip(
+            signatures, overloadsJavadoc, overloadsParamNames, overloadsDeclParamNames):
         if isOverloaded:
             output.append('@typing.overload')
         if signature.static:
             output.append('@staticmethod')
         non_self_args = [arg for arg in signature.args if arg.name != 'self']
-        use_javadoc_names = len(javadocParamNames) == len(non_self_args)
+        # Priority: declaration-line names > Parameters:-section names > inferred names.
+        if len(declParamNames) == len(non_self_args):
+            effective_param_names = declParamNames
+            use_javadoc_names = True
+        elif len(javadocParamNames) == len(non_self_args):
+            effective_param_names = javadocParamNames
+            use_javadoc_names = True
+        else:
+            effective_param_names = []
+            use_javadoc_names = False
         sig = []
         non_self_idx = 0
         for i, arg in enumerate(signature.args):
@@ -994,7 +1144,7 @@ def generateJavaMethodStub(parentName: str,
                 argDef = arg.name
             else:
                 if use_javadoc_names:
-                    argName = pysafe(javadocParamNames[non_self_idx]) or f'invalidArgName{i}'
+                    argName = pysafe(effective_param_names[non_self_idx]) or f'invalidArgName{i}'
                 else:
                     argName = pysafe(arg.name)
                     if argName is None:
@@ -1148,36 +1298,8 @@ def sanitizeJavadocHtml(escapedHtml: Optional[str]) -> Optional[str]:
             .replace('&gt;', '>')
 
 
-# Matches any Sphinx inline cross-reference role: :role:`target`
-_SPHINX_ROLE_RE = re.compile(r':(class|meth|func|attr|mod|obj|code|data|const|type|exc|ref):`([^`]*)`')
-
-
-def _simplify_sphinx_ref(match: re.Match) -> str:
-    """Reduce a Sphinx cross-reference to the bare simple name, for use in plain Python docstrings."""
-    role = match.group(1)
-    target = match.group(2).lstrip('~')
-
-    # Drop URL-encoded references such as %3Cinit%3E (the Java <init> constructor)
-    if '%' in target:
-        return ''
-
-    # Strip URL query strings and HTML anchors, and trailing .html
-    target = re.sub(r'[?#].*$', '', target)
-    target = re.sub(r'\.html?$', '', target)
-
-    # Take only the last dotted component as the simple name,
-    # filtering out URL scheme markers (e.g. 'https:'), pure digits,
-    # and common URL path noise segments from Oracle javadoc links.
-    _URL_NOISE = frozenset({'docs', 'api', 'oracle', 'com', 'javase', 'javax', 'is'})
-    parts = [p for p in target.split('.') if p and not p.endswith(':') and p not in _URL_NOISE and not p.isdigit()]
-
-    if not parts:
-        return ''
-
-    name = parts[-1]
-    if role == 'code':
-        return name
-    return name
+# _SPHINX_ROLE_RE and _simplify_sphinx_ref are defined earlier in the file,
+# before extractDeclarationParamNames, so they can be used before RST sanitization.
 
 
 # Field-section header names — blocks starting with these should not be re-flowed.
@@ -1239,8 +1361,11 @@ def extractParamNamesFromJavadoc(javadoc: str) -> List[str]:
     """
     names = []
     in_params = False
+    done = False  # stop after the first complete Parameters section
     param_indent: Optional[int] = None
     for line in javadoc.split('\n'):
+        if done:
+            break
         if re.search(r'\bParameters:\s*$', line):
             in_params = True
             param_indent = None
@@ -1256,6 +1381,7 @@ def extractParamNamesFromJavadoc(javadoc: str) -> List[str]:
                 # A non-empty line at or before the parameter indentation signals a new section
                 if (len(line) - len(line.lstrip())) <= param_indent:
                     in_params = False
+                    done = True  # don't re-enter; second section means unsplit combined doc
     return names
 
 
